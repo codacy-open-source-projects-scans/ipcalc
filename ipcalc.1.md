@@ -27,7 +27,10 @@ a netmask or a CIDR prefix as well.
 ## Options
 
 * **-c**, **--check**
-  Validate the IP address under the specified family.
+  Checks whether this is a valid IP address. When an IP family is specified
+  only the addresses of that family are accepted. A zero exit status
+  indicates a well formed address and a non-zero exit status indicates a
+  malformed address.
 
 * **-i**, **--info**
   Display generic information on the provided network in human readable format.
@@ -57,11 +60,13 @@ a netmask or a CIDR prefix as well.
 
 * **-h**, **--hostname**
   Display the hostname for the given IP address.
-  The variable exposed is HOSTNAME.
+  The variable exposed is HOSTNAME. When combined with no-decorate mode
+  (**--no-decorate**), only the hostname is printed.
 
 * **-o**, **--lookup-host**
   Display the IP address for the given hostname.
-  The variable exposed is ADDRESS.
+  The variable exposed is ADDRESS. When combined with no-decorate mode
+  (**--no-decorate**), only the address is printed.
 
 * **-4**, **--ipv4**
   Explicitly specify the IPv4 address family.
@@ -231,7 +236,8 @@ Report bugs at https://gitlab.com/ipcalc/ipcalc/issues
 
 ## Copyright
 
-Copyright © 1997-2020 Red Hat, Inc.
+Copyright © 1997-2024 Red Hat, Inc.
+Copyright © 2020-2024 Nikos Mavrogiannopoulos
 This is free software; see the source for copying conditions.  There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR
 PURPOSE.

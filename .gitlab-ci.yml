@@ -3,7 +3,7 @@ stages:
  - deploy
 
 .fedora.latest.template: &fedora_template
-  image: fedora:latest
+  image: fedora:38
   before_script:
 #in F34 rubygem-ronn got replaced by rubygem-ronn-ng
     - dnf install -y GeoIP-devel libmaxminddb-devel make meson ninja-build gcc libasan geolite2-{city,country} rubygem-ronn
