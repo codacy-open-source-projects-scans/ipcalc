@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # This shell script is a simple test runner for ipcalc tests.
 #
@@ -33,24 +33,24 @@ fail() {
 }
 
 TestSuccess() {
-	echo -n "Checking $@... "
+	echo -n "Checking $*... "
 	output=$(sh -c "$1" 2>&1)
 	rc=$?
-	[ $rc -eq 0 ] && ok || fail $output
+	[ $rc -eq 0 ] && ok || fail "$output"
 }
 
 TestFailure() {
-	echo -n "Checking $@... "
+	echo -n "Checking $*... "
 	output=$(sh -c "$1" 2>&1)
 	rc=$?
-	[ $rc -eq 0 ] && fail $output || ok
+	[ $rc -eq 0 ] && fail "$output" || ok
 }
 
 TestOutput() {
 	echo -n "Checking $1... "
 	output=$(sh -c "$1" 2>&1)
 	rc=$?
-	[ "$output" = "$2" ] && ok || fail $output
+	[ "$output" = "$2" ] && ok || fail "$output"
 }
 
 TestOutputFile() {

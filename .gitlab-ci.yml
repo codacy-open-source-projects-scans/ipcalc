@@ -4,6 +4,8 @@ stages:
 
 .fedora.latest.template: &fedora_template
   image: fedora:38
+  tags:
+  - saas-linux-small-amd64
   before_script:
 #in F34 rubygem-ronn got replaced by rubygem-ronn-ng
     - dnf install -y GeoIP-devel libmaxminddb-devel make meson ninja-build gcc libasan geolite2-{city,country} rubygem-ronn
@@ -72,10 +74,7 @@ pages-test:
     - ninja -C build
     - ninja -C build test
     - ninja -C build coverage-html && mv build/meson-logs/coveragereport public
-
-
-  tags:
-  - shared
+    - tests/run-coverage.sh
   except:
     - master
 
@@ -89,8 +88,6 @@ pages:
     - ninja -C build test
     - ninja -C build coverage-html && mv build/meson-logs/coveragereport public
     - tests/run-coverage.sh
-  tags:
-  - shared
   coverage: '/coverage lines: \d+\.\d+/'
   artifacts:
     when: on_success
