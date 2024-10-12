@@ -23,6 +23,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include "ipcalc.h"
 #include "ipv6.h"
@@ -103,7 +104,8 @@ void deaggregate_v4(const char *ip1s, const char *ip2s, unsigned flags)
 {
 	struct in_addr ip1, ip2;
 	unsigned step;
-	uint32_t base, end;
+	uint32_t end;
+	uint64_t base;
 	unsigned jsonchain;
 
 	if (inet_pton(AF_INET, ip1s, &ip1) <= 0) {
@@ -134,14 +136,16 @@ void deaggregate_v4(const char *ip1s, const char *ip2s, unsigned flags)
 
 	while (base <= end) {
 		step = 0;
-		while ((base | (1 << step)) != base) {
-			if ((base | (UINT32_MAX >> (31-step))) > end)
+		while ((base | ((uint64_t)1 << step)) != base) {
+			uint64_t b1 = base | ((uint64_t)(UINT32_MAX) >> (31-step));
+			if (b1 > end || (step == 32 && end == 0xffffffff))
 				break;
 			step++;
+			assert(step <= 32);
 		}
 
 		print_ipv4_net(&jsonchain, base, 32-step, flags);
-		base += (1 << step);
+		base += ((uint64_t)1 << step);
 	}
 
 	array_stop(&jsonchain);
