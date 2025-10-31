@@ -1,0 +1,6 @@
+[Split networks]
+Network:	192.168.5.0/32
+Network:	192.168.5.1/32
+
+Total:  	2
+Hosts/Net:	1

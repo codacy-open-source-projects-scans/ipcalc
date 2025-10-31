@@ -1,0 +1,10 @@
+# Ignore swap and backup files used by some editors.
+*~
+*.swp
+
+# Ignore final build artifacts (for the legacy Makefile).
+ipcalc
+out.tmp
+
+# Ignore the default out-of-tree build directory (for Meson).
+/build
