@@ -1764,7 +1764,7 @@ int main(int argc, char **argv)
 		break;
 	}
 
-	if (isatty(STDOUT_FILENO) != 0)
+	if ((isatty(STDOUT_FILENO) != 0) && (getenv("NO_COLOR") == 0))
 		colors = 1;
 
 	/* we know what we want to display now, so display it. */

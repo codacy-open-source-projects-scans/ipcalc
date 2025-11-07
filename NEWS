@@ -1,6 +1,6 @@
 * Version 1.0.4 (unreleased)
 - Fixed issues in test output
-- Fixed deaggregation issue with large addresses (#31)
+- Fixed deaggregation issue with large addresses (#31, #24)
 
 
 * Version 1.0.3 (released 2023-06-07)
