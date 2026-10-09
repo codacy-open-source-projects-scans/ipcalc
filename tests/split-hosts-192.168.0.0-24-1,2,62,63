@@ -1,0 +1,41 @@
+[Split networks]
+1. Requested size: 1 hosts
+Network:	192.168.0.192/30
+Netmask:	255.255.255.252 = 30
+Broadcast:	192.168.0.195
+HostMin:	192.168.0.193
+HostMax:	192.168.0.194
+Hosts/Net:	2
+
+2. Requested size: 2 hosts
+Network:	192.168.0.196/30
+Netmask:	255.255.255.252 = 30
+Broadcast:	192.168.0.199
+HostMin:	192.168.0.197
+HostMax:	192.168.0.198
+Hosts/Net:	2
+
+3. Requested size: 62 hosts
+Network:	192.168.0.128/26
+Netmask:	255.255.255.192 = 26
+Broadcast:	192.168.0.191
+HostMin:	192.168.0.129
+HostMax:	192.168.0.190
+Hosts/Net:	62
+
+4. Requested size: 63 hosts
+Network:	192.168.0.0/25
+Netmask:	255.255.255.128 = 25
+Broadcast:	192.168.0.127
+HostMin:	192.168.0.1
+HostMax:	192.168.0.126
+Hosts/Net:	126
+
+Total:  	4
+Needed size:	200
+Used network:	192.168.0.0/24
+
+[Unused networks]
+Network:	192.168.0.200/29
+Network:	192.168.0.208/28
+Network:	192.168.0.224/27

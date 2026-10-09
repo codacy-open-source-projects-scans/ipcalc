@@ -8,6 +8,13 @@ test('Split-Info',
 		ipcalc.full_path() + ' -abmnp -S 26 10.100.1.0/24'
 	]
 )
+test('SplitHosts-Info',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' -n --split-hosts=10 10.100.1.0/24'
+	]
+)
 test('Check-Info',
 	testrunner,
 	args : [
@@ -40,7 +47,7 @@ test('Random',
 	testrunner,
 	args : [
 		'--test-success',
-		ipcalc.full_path() + ' -r 24' + '|grep Address'
+		'out=$(' + ipcalc.full_path() + ' -r 24) && echo "$out" | grep -Eq \'^Network:[[:space:]]+(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)\' && ! echo "$out" | grep -q \'^Address:\''
 	]
 )
 test('RandomAddress',
@@ -54,7 +61,7 @@ test('RandomIPv6Implicit',
 	testrunner,
 	args : [
 		'--test-success',
-		ipcalc.full_path() + ' -r 112' + '|grep Address'
+		'out=$(' + ipcalc.full_path() + ' -r 112) && echo "$out" | grep -Eq \'^Network:[[:space:]]+fd\' && ! echo "$out" | grep -q \'^Address:\''
 	]
 )
 test('RandomIPv6PrefixIsValidULA',
@@ -68,7 +75,7 @@ test('RandomIPv6Explicit',
 	testrunner,
 	args : [
 		'--test-success',
-		ipcalc.full_path() + ' -6 -r 24' + '|grep Address'
+		'out=$(' + ipcalc.full_path() + ' -6 -r 24) && echo "$out" | grep -Eq \'^Network:[[:space:]]+fd\' && ! echo "$out" | grep -q \'^Address:\''
 	]
 )
 test('HostnameIPv6Localhost',
@@ -95,6 +102,20 @@ test('HostnameIPv4LocalhostJson',
 		files('hostname-localhost-ipv4-json')
 	]
 )
+# Values that reach the JSON output from outside ipcalc (here a host
+# name) must be escaped. The test needs jq, and fails when it is missing
+# rather than being skipped (REQ-GEN-TEST-007).
+if host_machine.system() == 'linux'
+	fake_getnameinfo = shared_module('fake-getnameinfo', 'fake-getnameinfo.c')
+	test('JsonEscapeHostname',
+		testrunner,
+		args : [
+			'--test-success',
+			'{ command -v jq >/dev/null || { echo "jq: not found"; exit 1; }; } && ASAN_OPTIONS="$ASAN_OPTIONS:verify_asan_link_order=0" LD_PRELOAD=' + fake_getnameinfo.full_path() + ' ' + ipcalc.full_path() + ' -j -h 127.0.0.1 | jq -e \'.HOSTNAME == "a\\"b\\\\c\\td"\''
+		],
+		depends : fake_getnameinfo
+	)
+endif
 test('IPIPv6Localhost',
 	testrunner,
 	args : [
@@ -260,6 +281,326 @@ test('SplitPrefix120',
 		files('split-fcfa:b4ca:f1d8:125b:dc00::-112-120')
 	]
 )
+test('SplitPrefix0IPv4',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -S 0 0.0.0.0/0',
+		files('split-0.0.0.0-0-0')
+	]
+)
+test('SplitPrefix3Of1',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -S 3 10.0.0.0/1',
+		files('split-10.0.0.0-1-3')
+	]
+)
+test('SplitPrefix2Of0IPv6',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -S 2 ::/0',
+		files('split-::-0-2')
+	]
+)
+test('SplitPrefix124EndOfSpace',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -S 124 ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/120',
+		files('split-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff-120-124')
+	]
+)
+
+# --split tests with subnets of different sizes (VLSM)
+test('SplitVLSMPrefix58And64',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -S 1:58 -S 64 2001:db8:1c88:6000::/56',
+		files('split-2001:db8:1c88:6000::-56-1:58-64')
+	]
+)
+test('NoDecorateSplitVLSMPrefix58And64',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --no-decorate -S 1:58 -S 64 2001:db8:1c88:6000::/56',
+		files('nsplit-2001:db8:1c88:6000::-56-1:58-64')
+	]
+)
+test('JsonSplitVLSMPrefix58And64',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -j -S 1:58 -S 64 2001:db8:1c88:6000::/56',
+		files('json-split-2001:db8:1c88:6000::-56-1:58-64')
+	]
+)
+test('SplitVLSMUnused',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -S 1:28 -S 2:27 192.168.0.0/24',
+		files('split-192.168.0.0-24-1:28-2:27')
+	]
+)
+test('NoDecorateSplitVLSMUnused',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --no-decorate -S 1:28 -S 2:27 192.168.0.0/24',
+		files('nsplit-192.168.0.0-24-1:28-2:27')
+	]
+)
+test('JsonSplitVLSMUnused',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -j -S 1:28 -S 2:27 192.168.0.0/24',
+		files('json-split-192.168.0.0-24-1:28-2:27')
+	]
+)
+test('SplitVLSMFillAligned',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -S 3:64 -S 60 2001:db8::/56',
+		files('split-2001:db8::-56-3:64-60')
+	]
+)
+test('SplitVLSMSamePrefix',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -S 2:26 -S 26 192.168.1.0/24',
+		files('split-192.168.1.0-24-2:26-26')
+	]
+)
+test('SplitVLSMNetmask',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -S 2:255.255.255.192 192.168.1.0/24',
+		files('split-192.168.1.0-24-2:255.255.255.192')
+	]
+)
+test('SplitVLSMWholeSpace',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -S 2 -S 1:1 ::/0',
+		files('split-::-0-2-1:1')
+	]
+)
+test('SplitVLSMTooSmall',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' -S 1:25 -S 1:25 -S 1:26 192.168.0.0/24',
+		'--test-output',
+		ipcalc.full_path() + ' -S 1:25 -S 1:25 -S 1:26 192.168.0.0/24',
+		'ipcalc: 192.168.0.0/24 is too small for the requested subnets'
+	]
+)
+test('SplitVLSMNoSpaceForFill',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' -S 2:25 -S 26 192.168.0.0/24',
+		'--test-output',
+		ipcalc.full_path() + ' -S 2:25 -S 26 192.168.0.0/24',
+		'ipcalc: 192.168.0.0/24 is too small for the requested subnets'
+	]
+)
+test('SplitVLSMTwoFills',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' -S 26 -S 27 192.168.0.0/24',
+		'--test-output',
+		ipcalc.full_path() + ' -S 26 -S 27 192.168.0.0/24',
+		'ipcalc: only one split prefix may be given without a count'
+	]
+)
+test('SplitVLSMZeroCount',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' -S 0:26 192.168.0.0/24',
+		'--test-output',
+		ipcalc.full_path() + ' -S 0:26 192.168.0.0/24',
+		'ipcalc: bad split count: 0:26'
+	]
+)
+test('SplitVLSMBadCount',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' -S x:26 192.168.0.0/24',
+		'--test-output',
+		ipcalc.full_path() + ' -S x:26 192.168.0.0/24',
+		'ipcalc: bad split count: x:26'
+	]
+)
+test('SplitVLSMCountOverflow',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' -S 99999999999999999999:26 192.168.0.0/24',
+		'--test-output',
+		ipcalc.full_path() + ' -S 99999999999999999999:26 192.168.0.0/24',
+		'ipcalc: bad split count: 99999999999999999999:26'
+	]
+)
+test('SplitVLSMBadPrefix',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' -S 1:abc 192.168.0.0/24',
+		'--test-output',
+		ipcalc.full_path() + ' -S 1:abc 192.168.0.0/24',
+		'ipcalc: bad IPv4 prefix: 1:abc'
+	]
+)
+
+# --split-hosts tests
+test('SplitHosts',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --split-hosts=10,20,30 192.168.0.0/24',
+		files('split-hosts-192.168.0.0-24-10,20,30')
+	]
+)
+test('NoDecorateSplitHosts',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --no-decorate --split-hosts=10,20,30 192.168.0.0/24',
+		files('nsplit-hosts-192.168.0.0-24-10,20,30')
+	]
+)
+test('JsonSplitHosts',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -j --split-hosts=10,20,30 192.168.0.0/24',
+		files('json-split-hosts-192.168.0.0-24-10,20,30')
+	]
+)
+test('SplitHostsSmallest',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --split-hosts=1,2,62,63 192.168.0.0/24',
+		files('split-hosts-192.168.0.0-24-1,2,62,63')
+	]
+)
+test('SplitHostsRepeated',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --split-hosts=1,2 --split-hosts=62,63 192.168.0.0/24',
+		files('split-hosts-192.168.0.0-24-1,2,62,63')
+	]
+)
+test('SplitHostsExactFit',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --no-decorate --split-hosts=126,62,62 192.168.0.0/24',
+		files('nsplit-hosts-192.168.0.0-24-126,62,62')
+	]
+)
+test('SplitHostsIPv6',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --split-hosts=1,2,3,256 2001:db8::/112',
+		files('split-hosts-2001:db8::-112-1,2,3,256')
+	]
+)
+test('JsonSplitHostsWholeIPv4',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -j --split-hosts=4294967294 0.0.0.0/0',
+		files('json-split-hosts-0.0.0.0-0-4294967294')
+	]
+)
+test('SplitHostsTooSmall',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' --split-hosts=200,100 192.168.0.0/24',
+		'--test-output',
+		ipcalc.full_path() + ' --split-hosts=200,100 192.168.0.0/24',
+		'ipcalc: 192.168.0.0/24 is too small for the requested subnets'
+	]
+)
+test('SplitHostsLargerThanNetwork',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' --split-hosts=300 192.168.0.0/24',
+		'--test-output',
+		ipcalc.full_path() + ' --split-hosts=300 192.168.0.0/24',
+		'ipcalc: 192.168.0.0/24 is too small for the requested subnets'
+	]
+)
+test('SplitHostsTooManyHosts',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' --split-hosts=4294967295 0.0.0.0/0',
+		'--test-output',
+		ipcalc.full_path() + ' --split-hosts=4294967295 0.0.0.0/0',
+		'ipcalc: too many hosts requested: 4294967295'
+	]
+)
+test('SplitHostsWithSplit',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' --split-hosts=10 -S 26 192.168.0.0/24',
+		'--test-output',
+		ipcalc.full_path() + ' --split-hosts=10 -S 26 192.168.0.0/24',
+		'ipcalc: --split-hosts cannot be combined with --split'
+	]
+)
+test('SplitHostsZero',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' --split-hosts=0 192.168.0.0/24',
+		'--test-output',
+		ipcalc.full_path() + ' --split-hosts=0 192.168.0.0/24',
+		'ipcalc: bad host count: 0'
+	]
+)
+test('SplitHostsEmptyItem',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' --split-hosts=1,,2 192.168.0.0/24',
+		'--test-output',
+		ipcalc.full_path() + ' --split-hosts=1,,2 192.168.0.0/24',
+		'ipcalc: bad host count: 1,,2'
+	]
+)
+test('SplitHostsOverflow',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' --split-hosts=18446744073709551616 2001:db8::/64',
+		'--test-output',
+		ipcalc.full_path() + ' --split-hosts=18446744073709551616 2001:db8::/64',
+		'ipcalc: bad host count: 18446744073709551616'
+	]
+)
 
 # --no-decorate tests
 test('NoDecorateSplitPrefix18',
@@ -378,7 +719,7 @@ test('TestHumanReadableGenericInfoInternetIPv4',
 		files('i-3.130.45.15')
 	]
 )
-test('TestHumanReadableHostOnThisNetwork',
+test('TestHumanReadableThisNetwork',
 	testrunner,
 	args : [
 		'--test-outfile',
@@ -754,6 +1095,110 @@ test('TestHumanReadableLinkScopedUnicast',
 		files('i-fe80::b:0:7acd:0:5')
 	]
 )
+test('TestHumanReadableThisHostOnThisNetwork',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -i 0.0.0.0',
+		files('i-0.0.0.0')
+	]
+)
+test('TestHumanReadable6a44Relay',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -i 192.88.99.2',
+		files('i-192.88.99.2')
+	]
+)
+test('AddrspaceIPv4LargerThanBlock',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --addrspace 192.168.0.0/8',
+		'ADDRSPACE=Internet'
+	]
+)
+test('AddrspaceIPv4LargerThanPrivateBlock',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --addrspace 10.0.0.0/7',
+		'ADDRSPACE=Internet'
+	]
+)
+test('AddrspaceIPv4LargerThanThisNetwork',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --addrspace 0.0.0.0/7',
+		'ADDRSPACE=Internet'
+	]
+)
+test('TestHumanReadableDiscardOnly',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -i 100::1',
+		files('i-100::1')
+	]
+)
+test('AddrspaceNotDiscardOnly',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --addrspace 1000::1',
+		'ADDRSPACE=Reserved'
+	]
+)
+test('TestHumanReadableDummyIPv6Prefix',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -i 100:0:0:1::5',
+		files('i-100:0:0:1::5')
+	]
+)
+test('TestHumanReadableDNSSDSRPAnycast',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -i 2001:1::3',
+		files('i-2001:1::3')
+	]
+)
+test('TestHumanReadableDRIPDET',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -i 2001:30::1',
+		files('i-2001:30::1')
+	]
+)
+test('TestHumanReadableDocumentation3fff',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -i 3fff::1',
+		files('i-3fff::1')
+	]
+)
+test('TestHumanReadableSRv6SIDs',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -i 5f00::1',
+		files('i-5f00::1')
+	]
+)
+test('AddrspaceIPv6LargerThanBlock',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --addrspace 2002::/15',
+		'ADDRSPACE="Global Unicast"'
+	]
+)
 test('TestHumanReadableGenericInfoPrefix48',
 	testrunner,
 	args : [
@@ -787,6 +1232,66 @@ test('TestHelpCommand',
 	args : [
 		'--test-success',
 		ipcalc.full_path() + ' --help'
+	]
+)
+# -g/--geoinfo exist only with a geo backend
+if have_geo
+	test('GeoInfoAccepted',
+		testrunner,
+		args : [
+			'--test-success',
+			ipcalc.full_path() + ' -g 127.0.0.1'
+		]
+	)
+else
+	test('GeoInfoShortUnavailable',
+		testrunner,
+		args : [
+			'--test-failure',
+			ipcalc.full_path() + ' -g 127.0.0.1'
+		]
+	)
+	test('GeoInfoLongUnavailable',
+		testrunner,
+		args : [
+			'--test-failure',
+			ipcalc.full_path() + ' --geoinfo 127.0.0.1'
+		]
+	)
+	test('GeoInfoNotInUsage',
+		testrunner,
+		args : [
+			'--test-failure',
+			ipcalc.full_path() + ' --usage 2>&1 | grep -e -g -e geoinfo'
+		]
+	)
+endif
+test('TestShortHelpCommand',
+	testrunner,
+	args : [
+		'--test-success',
+		ipcalc.full_path() + ' -?'
+	]
+)
+test('UnknownLongOption',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' --bogus 1.2.3.4'
+	]
+)
+test('UnknownShortOption',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' -y 1.2.3.4'
+	]
+)
+test('MissingOptionArgument',
+	testrunner,
+	args : [
+		'--test-failure',
+		ipcalc.full_path() + ' -S'
 	]
 )
 
@@ -960,6 +1465,14 @@ test('CalculateNetmaskPrefix22',
 		'NETMASK=255.255.252.0'
 	]
 )
+test('CalculateNetmaskPrefix1',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' -m 10.0.0.0/1',
+		'NETMASK=128.0.0.0'
+	]
+)
 test('CalculateNetmaskNoPrefix',
 	testrunner,
 	args : [
@@ -1046,6 +1559,30 @@ test('CalculateNetworkFromPrefix0',
 		'NETWORK=0.0.0.0'
 	]
 )
+test('AddressesPrefix0IPv4',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --addresses 0.0.0.0/0',
+		'ADDRESSES=4294967294'
+	]
+)
+test('AddressesPrefix1IPv4',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --addresses 10.0.0.0/1',
+		'ADDRESSES=2147483646'
+	]
+)
+test('AddressesPrefix0IPv6',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --addresses ::/0',
+		'ADDRESSES=340282366920938463463374607431768211456'
+	]
+)
 
 # --reverse-dns output tests
 test('LookupReverseDNSFromPrefix32IPv4',
@@ -1078,6 +1615,24 @@ test('LookupReverseDNSFromPrefix12IPv4',
 		'--test-output',
 		ipcalc.full_path() + ' --reverse-dns 193.92.150.3/12',
 		'REVERSEDNS=80-95.193.in-addr.arpa.'
+	]
+)
+
+test('LookupReverseDNSFromPrefix4IPv4',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --reverse-dns 193.92.150.3/4',
+		'REVERSEDNS=192-207.in-addr.arpa.'
+	]
+)
+
+test('LookupReverseDNSFromPrefix0IPv4',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --reverse-dns 193.92.150.3/0',
+		'REVERSEDNS=in-addr.arpa.'
 	]
 )
 test('LookupReverseDNS4321IPv6',
@@ -1129,6 +1684,105 @@ test('LookupReverseDNSFromPrefix120IPv6',
 	]
 )
 
+test('LookupReverseDNSFromPrefix0IPv6',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --reverse-dns ::/0',
+		'REVERSEDNS=ip6.arpa.'
+	]
+)
+
+test('LookupReverseDNSFromPrefix31IPv6',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --reverse-dns 2001:db8::/31',
+		'REVERSEDNS="8.b.d.0.1.0.0.2.ip6.arpa. 9.b.d.0.1.0.0.2.ip6.arpa."'
+	]
+)
+
+test('LookupReverseDNSFromPrefix33IPv6',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --reverse-dns 2001:db8:8000::/33',
+		'REVERSEDNS="8.8.b.d.0.1.0.0.2.ip6.arpa. 9.8.b.d.0.1.0.0.2.ip6.arpa. a.8.b.d.0.1.0.0.2.ip6.arpa. b.8.b.d.0.1.0.0.2.ip6.arpa. c.8.b.d.0.1.0.0.2.ip6.arpa. d.8.b.d.0.1.0.0.2.ip6.arpa. e.8.b.d.0.1.0.0.2.ip6.arpa. f.8.b.d.0.1.0.0.2.ip6.arpa."'
+	]
+)
+
+test('LookupReverseDNSFromPrefix34IPv6',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --reverse-dns 2001:db8:4000::/34',
+		'REVERSEDNS="4.8.b.d.0.1.0.0.2.ip6.arpa. 5.8.b.d.0.1.0.0.2.ip6.arpa. 6.8.b.d.0.1.0.0.2.ip6.arpa. 7.8.b.d.0.1.0.0.2.ip6.arpa."'
+	]
+)
+
+test('LookupReverseDNSFromPrefix127IPv6',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --reverse-dns 1234::4321/127',
+		'REVERSEDNS="0.2.3.4.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.4.3.2.1.ip6.arpa. 1.2.3.4.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.4.3.2.1.ip6.arpa."'
+	]
+)
+
+test('LookupReverseDNSUnmaskedPrefix35IPv6',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --reverse-dns 2001:db8:3fff::1/35',
+		'REVERSEDNS="2.8.b.d.0.1.0.0.2.ip6.arpa. 3.8.b.d.0.1.0.0.2.ip6.arpa."'
+	]
+)
+
+test('LookupReverseDNSNoDecoratePrefix37IPv6',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --reverse-dns --no-decorate 2001:db8:abcd::/37',
+		files('reverse-dns-no-decorate-2001:db8:abcd::-37')
+	]
+)
+
+test('AllInfoReverseDNSPrefix31IPv6',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info 2001:db8::/31',
+		files('all-info-2001:db8::-31')
+	]
+)
+
+test('JsonAllInfoReverseDNSPrefix31IPv6',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info --json 2001:db8::/31',
+		files('json-all-info-2001:db8::-31')
+	]
+)
+
+test('JsonAllInfoReverseDNSPrefix32IPv6',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info --json 2001:db8::/32',
+		files('json-all-info-2001:db8::-32')
+	]
+)
+
+test('JsonAllInfoReverseDNSPrefix24IPv4',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info --json 192.168.2.7/24',
+		files('json-all-info-192.168.2.7-24')
+	]
+)
+
 # specific info decorated & no-decorate test
 test('SpecificInfoOutput',
 	testrunner,
@@ -1144,6 +1798,14 @@ test('SpecificInfoOutputNoDecorate',
 		'--test-outfile',
 		ipcalc.full_path() + ' -abmnp --minaddr --maxaddr --addresses --no-decorate 192.168.2.7/24',
 		files('192.168.2.7')
+	]
+)
+test('SpecificInfoOutputNoDecorateQuotedAddrspace',
+	testrunner,
+	args : [
+		'--test-output',
+		ipcalc.full_path() + ' --addrspace --no-decorate 10.0.0.1',
+		'"Private Use"'
 	]
 )
 
@@ -1218,6 +1880,110 @@ test('AllInfo',
 		'--test-outfile',
 		ipcalc.full_path() + ' --all-info 192.168.2.7/24',
 		files('all-info-192.168.2.7')
+	]
+)
+test('AllInfoClassDLowest',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info 224.0.0.1',
+		files('all-info-224.0.0.1')
+	]
+)
+test('AllInfoClassDHighestOctet',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info 239.1.1.1',
+		files('all-info-239.1.1.1')
+	]
+)
+test('AllInfoClassE',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info 240.0.0.1',
+		files('all-info-240.0.0.1')
+	]
+)
+test('AllInfoIIDLinkLocalUniversal',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info fe80::21b:21ff:fe3a:5c7d/64',
+		files('all-info-fe80::21b:21ff:fe3a:5c7d-64')
+	]
+)
+test('JsonAllInfoIIDLinkLocalUniversal',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info --json fe80::21b:21ff:fe3a:5c7d/64',
+		files('json-all-info-fe80::21b:21ff:fe3a:5c7d-64')
+	]
+)
+test('NoDecorateAllInfoIIDLinkLocalUniversal',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info --no-decorate fe80::21b:21ff:fe3a:5c7d/64',
+		files('no-decorate-all-info-fe80::21b:21ff:fe3a:5c7d-64')
+	]
+)
+test('AllInfoIIDLinkLocalLocal',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info fe80::ff:fe00:1',
+		files('all-info-fe80::ff:fe00:1')
+	]
+)
+test('AllInfoIIDGroup',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info 2001:db8::300:ff:fe00:1',
+		files('all-info-2001:db8::300:ff:fe00:1')
+	]
+)
+test('AllInfoIIDNotEUI64',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info 2001:db8::f00d:1234:5678:9abc/64',
+		files('all-info-2001:db8::f00d:1234:5678:9abc-64')
+	]
+)
+test('AllInfoIIDNetwork',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info fe80::/64',
+		files('all-info-fe80::-64')
+	]
+)
+test('AllInfoIIDMapped',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info ::ffff:192.0.2.1',
+		files('all-info-::ffff:192.0.2.1')
+	]
+)
+test('AllInfoIIDMulticast',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' --all-info ff02::21b:21ff:fe3a:5c7d',
+		files('all-info-ff02::21b:21ff:fe3a:5c7d')
+	]
+)
+test('InfoIIDLinkLocal',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -i fe80::21b:21ff:fe3a:5c7d/64',
+		files('i-fe80::21b:21ff:fe3a:5c7d-64')
 	]
 )
 test('Info',
@@ -1318,6 +2084,38 @@ test('DeaggregateIPv6Json',
 		files('deaggregate-fcd3:57d1:733:c18f:b498:25e1:788:f-fcd3:57d1:733:c18f:b498:25e1:789:ffa9')
 	]
 )
+test('DeaggregateIPv6All',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -d ::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff',
+		files('deaggregate-::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')
+	]
+)
+test('DeaggregateIPv6UpperHalf',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -d 8000::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff',
+		files('deaggregate-8000::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')
+	]
+)
+test('DeaggregateIPv6LastAddress',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -d ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff',
+		files('deaggregate-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')
+	]
+)
+test('DeaggregateIPv6LowerHalf',
+	testrunner,
+	args : [
+		'--test-outfile',
+		ipcalc.full_path() + ' -d ::-8000::',
+		files('deaggregate-::-8000::')
+	]
+)
 test('StandardInfo',
 	testrunner,
 	args :	[	'--test-outfile',
@@ -1352,3 +2150,111 @@ test('DeaggregateSplitIPv4',
 	find_program('ipcalc-delegate-split-ipv4.sh'),
 	env : ['IPCALC=' + ipcalc.full_path()]
 )
+# Compare --split-hosts with the Debian ipcalc (REQ-SPLIT-COMPAT-001); the
+# Debian script is only in the git tree, not in release tarballs. The tests
+# need perl and fail when it is missing (REQ-GEN-TEST-007).
+if import('fs').exists('debian-ipcalc/ipcalc')
+	foreach c : [
+		['192.168.0.0/24', '10,20,30'],
+		['192.168.0.0/24', '1,2,62,63'],
+		['192.168.0.0/24', '126,62,62'],
+		['192.168.0.0/24', '5,5,5'],
+		['192.168.0.0/24', '30,30,30,30,30,30,30,30'],
+		['192.168.5.45/24', '10,20'],
+		['192.168.1.0/24', '254'],
+		['10.0.0.0/30', '2'],
+		['172.16.0.0/12', '1'],
+		['10.0.0.0/8', '1000,5,5,70000,300,2'],
+		['10.0.0.0/16', '2000,1000,500,250,120,60,30,14,6,2,1'],
+		['10.20.30.0/23', '100,100,50,3,3,1'],
+	]
+		test('DebianSplitHosts-' + c[0].replace('/', '-') + '-' + c[1],
+			find_program('ipcalc-debian-split-hosts.sh'),
+			args : c,
+			env : ['IPCALC=' + ipcalc.full_path(),
+			       'DEBIAN_IPCALC=' + meson.current_source_dir() / 'debian-ipcalc' / 'ipcalc']
+		)
+	endforeach
+endif
+
+# Network comparison: [name, expected exit status, arguments, expected
+# output]. The output of errors (status 2) is not compared.
+foreach c : [
+	['EqualsHostBits', '0', '192.168.7.15/24 --equals=192.168.7.5/24', 'The networks are equal'],
+	['EqualsNetmask', '0', '192.168.7.15 255.255.255.0 --equals=192.168.7.5/255.255.255.0', 'The networks are equal'],
+	['EqualsClassPrefix', '0', '--class-prefix 10.0.0.0/8 --equals=10.9.9.9', 'The networks are equal'],
+	['EqualsJson', '0', '-j 192.168.7.15/24 --equals=192.168.7.5/24', ''],
+	['EqualsNoDecorate', '1', '--no-decorate 192.168.7.15/24 --equals=192.168.7.5/25', ''],
+	['SubnetOfNoDecorate', '0', '--no-decorate 192.168.0.1/24 --subnet-of=192.168.1.15/23', ''],
+	['OverlapsSilent', '1', '-s 10.0.0.0/8 --overlaps=::/0', ''],
+	['EqualsHost32', '0', '192.168.1.15 --equals=192.168.1.15/32', 'The networks are equal'],
+	['EqualsHostBitsIPv6', '0', '2001:db8::1/64 --equals=2001:db8::ffff/64', 'The networks are equal'],
+	['EqualsPrefix0', '0', '1.2.3.4/0 --equals=0.0.0.0/0', 'The networks are equal'],
+	['EqualsDifferentPrefix', '1', '192.168.0.0/24 --equals=192.168.0.0/23', 'The networks are not equal'],
+	['EqualsDisjoint', '1', '192.168.1.15/24 --equals=192.168.7.1/24', 'The networks are not equal'],
+	['EqualsDifferentPrefixIPv6', '1', '2001:db8::/64 --equals=2001:db8::/65', 'The networks are not equal'],
+	['SubnetOf', '0', '192.168.0.1/24 --subnet-of=192.168.1.15/23', '192.168.0.0/24 is a subnet of 192.168.0.0/23'],
+	['SubnetOfEqual', '0', '10.0.0.0/8 --subnet-of=10.0.0.0/8', '10.0.0.0/8 is a subnet of 10.0.0.0/8'],
+	['SubnetOfPartialByte', '0', '10.64.0.0/10 --subnet-of=10.0.0.0/9', '10.64.0.0/10 is a subnet of 10.0.0.0/9'],
+	['SubnetOfPrefix0', '0', '10.1.2.3 --subnet-of=0.0.0.0/0', '10.1.2.3/32 is a subnet of 0.0.0.0/0'],
+	['SubnetOfIPv6', '0', '2001:db8:1::/48 --subnet-of=2001:db8::/32', '2001:db8:1::/48 is a subnet of 2001:db8::/32'],
+	['SubnetOfPrefix0IPv6', '0', '::1 --subnet-of=::/0', '::1/128 is a subnet of ::/0'],
+	['SubnetOfSupernet', '1', '192.168.1.15/23 --subnet-of=192.168.0.1/24', '192.168.0.0/23 is not a subnet of 192.168.0.0/24'],
+	['SubnetOfSiblingPartialByte', '1', '10.128.0.0/10 --subnet-of=10.0.0.0/9', '10.128.0.0/10 is not a subnet of 10.0.0.0/9'],
+	['SubnetOfPrefix0Supernet', '1', '0.0.0.0/0 --subnet-of=0.0.0.0/1', '0.0.0.0/0 is not a subnet of 0.0.0.0/1'],
+	['SubnetOfSupernetIPv6', '1', '2001:db8::/32 --subnet-of=2001:db8:1::/48', '2001:db8::/32 is not a subnet of 2001:db8:1::/48'],
+	['OverlapsSupernet', '0', '192.168.1.15/23 --overlaps=192.168.0.1/24', 'The networks overlap'],
+	['OverlapsSubnet', '0', '192.168.0.1/24 --overlaps=192.168.1.15/23', 'The networks overlap'],
+	['OverlapsHost', '0', '10.0.0.1 --overlaps=10.0.0.1', 'The networks overlap'],
+	['OverlapsPrefix0IPv6', '0', '::/0 --overlaps=2001:db8::1', 'The networks overlap'],
+	['OverlapsDisjoint', '1', '192.168.1.15/24 --overlaps=192.168.7.1/24', 'The networks do not overlap'],
+	['OverlapsAdjacent', '1', '192.168.0.0/24 --overlaps=192.168.1.0/24', 'The networks do not overlap'],
+	['OverlapsAdjacentIPv6', '1', '2001:db8::/33 --overlaps=2001:db8:8000::/33', 'The networks do not overlap'],
+	['OverlapsMixedFamily', '1', '10.0.0.0/8 --overlaps=::/0', 'The networks do not overlap'],
+	['EqualsMappedIPv4', '1', '::ffff:10.0.0.1 --equals=10.0.0.1', 'The networks are not equal'],
+	['EqualsBadAddress', '2', '10.0.0.0/8 --equals=1.2.3', ''],
+	['SubnetOfBadPrefixIPv6', '2', '::/0 --subnet-of=::/129', ''],
+	['OverlapsBadNetmask', '2', '10.0.0.0/8 --overlaps=10.0.0.0/255.0.255.0', ''],
+	['OverlapsForcedFamily', '2', '-4 10.0.0.0/8 --overlaps=::/0', ''],
+	['EqualsBadInputAddress', '2', '1.2.3 --equals=1.2.3.0/24', ''],
+	['Equals-Overlaps', '2', '10.0.0.0/8 --equals=10.0.0.0/8 --overlaps=10.0.0.0/8', ''],
+	['Equals-Equals', '2', '10.0.0.0/8 --equals=10.0.0.0/8 --equals=10.0.0.0/8', ''],
+	['Equals-Info', '2', '--equals=10.0.0.0/8 -n 10.0.0.0/8', ''],
+	['Check-Equals', '2', '-c 10.0.0.0/8 --equals=10.0.0.0/8', ''],
+	['Equals-IPv4-IPv6', '2', '-4 -6 10.0.0.0/8 --equals=10.0.0.0/8', ''],
+	['Overlaps-UnknownOption', '2', '10.0.0.0/8 --overlaps=10.0.0.0/8 --bogus', ''],
+	['UnknownOption-Overlaps', '2', '--bogus 10.0.0.0/8 --overlaps=10.0.0.0/8', ''],
+	['EqualsMissingArgument', '2', '10.0.0.0/8 --equals', ''],
+	['SubnetOfNoAddress', '2', '--subnet-of=10.0.0.0/8', ''],
+]
+	cmd = ipcalc.full_path() + ' ' + c[2]
+	args = ['--test-status', c[1], cmd]
+	if c[1] != '2'
+		args += ['--test-output', cmd, c[3]]
+	endif
+	test(c[0], testrunner, args : args)
+endforeach
+
+# Without a comparison option, errors keep exit status 1
+test('UnknownOptionStatus',
+	testrunner,
+	args : [
+		'--test-status', '1',
+		ipcalc.full_path() + ' --bogus 1.2.3.4'
+	]
+)
+
+# --cidr: [name, arguments, expected output]
+foreach c : [
+	['CidrIPv4', '--cidr 192.168.123.7/24', 'CIDR=192.168.123.0/24'],
+	['CidrNoDecorateIPv6', '--cidr --no-decorate 2001:db8::1/64', '2001:db8::/64'],
+	['CidrSingleHost', '--cidr 192.168.1.1', 'CIDR=192.168.1.1/32'],
+	['CidrSingleHostIPv6', '--cidr ::1', 'CIDR=::1/128'],
+	['CidrFieldOrder', '-n --cidr -p 10.1.2.3/8', 'PREFIX=8\nNETWORK=10.0.0.0\nCIDR=10.0.0.0/8'],
+]
+	cmd = ipcalc.full_path() + ' ' + c[1]
+	test(c[0], testrunner,
+		args : ['--test-status', '0', cmd, '--test-output', cmd, c[2]])
+endforeach
+test('RandomCidr', testrunner,
+	args : ['--test-success', ipcalc.full_path() + ' -r 24 --cidr --no-decorate'])

@@ -1,6 +1,6 @@
 project('ipcalc', 'c',
 	license : 'GPLv2',
-	version : '1.0.4'
+	version : '1.1.0'
 )
 
 src = [
@@ -9,6 +9,7 @@ src = [
 	'ipcalc-reverse.c',
 	'ipcalc-utils.c',
 	'netsplit.c',
+	'netcompare.c',
 	'ipv6.h',
 	'ipv6.c',
 	'deaggregate.c'
@@ -19,6 +20,7 @@ args = [
 ]
 
 deps = []
+have_geo = false
 
 use_maxminddb = get_option('use_maxminddb')
 use_geoip = get_option('use_geoip')
@@ -34,6 +36,7 @@ maxminddb = dependency('libmaxminddb',
 if maxminddb.found()
 	src += ['ipcalc-maxmind.c']
 	args += ['-DUSE_MAXMIND']
+	have_geo = true
 	if dl.found()
 		message('linking maxminddb dynamically at runtime if it is available')
 		args += [
@@ -52,6 +55,7 @@ else
 	if geoip.found()
 		src += ['ipcalc-geoip.c']
 		args += ['-DUSE_GEOIP']
+		have_geo = true
 		if dl.found()
 			message('linking geoip dynamically at runtime if it is available')
 			args += [

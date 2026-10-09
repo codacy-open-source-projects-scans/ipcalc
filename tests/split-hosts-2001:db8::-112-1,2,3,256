@@ -1,0 +1,47 @@
+[Split networks]
+1. Requested size: 1 hosts
+Network:	2001:db8::106/128
+Netmask:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff = 128
+HostMin:	2001:db8::106
+HostMax:	2001:db8::106
+Hosts/Net:	1
+
+2. Requested size: 2 hosts
+Network:	2001:db8::104/127
+Netmask:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:fffe = 127
+HostMin:	2001:db8::104
+HostMax:	2001:db8::105
+Hosts/Net:	2
+
+3. Requested size: 3 hosts
+Network:	2001:db8::100/126
+Netmask:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:fffc = 126
+HostMin:	2001:db8::100
+HostMax:	2001:db8::103
+Hosts/Net:	4
+
+4. Requested size: 256 hosts
+Network:	2001:db8::/120
+Netmask:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ff00 = 120
+HostMin:	2001:db8::
+HostMax:	2001:db8::ff
+Hosts/Net:	256
+
+Total:  	4
+Needed size:	263
+Used network:	2001:db8::/119
+
+[Unused networks]
+Network:	2001:db8::107/128
+Network:	2001:db8::108/125
+Network:	2001:db8::110/124
+Network:	2001:db8::120/123
+Network:	2001:db8::140/122
+Network:	2001:db8::180/121
+Network:	2001:db8::200/119
+Network:	2001:db8::400/118
+Network:	2001:db8::800/117
+Network:	2001:db8::1000/116
+Network:	2001:db8::2000/115
+Network:	2001:db8::4000/114
+Network:	2001:db8::8000/113

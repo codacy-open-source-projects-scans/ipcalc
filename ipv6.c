@@ -60,7 +60,7 @@ void ipv6_orm(struct in6_addr *a, unsigned bits)
 	int i;
 	unsigned bytes = bits / 8;
 
-	assert(bits < 128);
+	assert(bits <= 128);
 
 	for (i = 0; i < bytes; i++)
 		a->s6_addr[15 - i] |= 0xff;

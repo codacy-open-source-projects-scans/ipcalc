@@ -23,6 +23,9 @@
 #include <string.h>
 #include <stdarg.h>
 #include <errno.h>
+#include <stdint.h>
+#include <netinet/in.h>
+#include "ipcalc.h"
 
 int __attribute__((__format__(printf, 2, 3))) safe_asprintf(char **strp, const char *fmt, ...)
 {
@@ -34,7 +37,7 @@ int __attribute__((__format__(printf, 2, 3))) safe_asprintf(char **strp, const c
 	va_end(args);
 	if (ret < 0) {
 		fprintf(stderr, "Memory allocation failure\n");
-		exit(1);
+		exit(exit_failure);
 	}
 	return ret;
 }
@@ -77,7 +80,7 @@ extern char __attribute__((warn_unused_result)) *safe_strdup(const char *str)
 	ret = strdup(str);
 	if (!ret) {
 		fprintf(stderr, "Memory allocation failure\n");
-		exit(1);
+		exit(exit_failure);
 	}
 	return ret;
 }

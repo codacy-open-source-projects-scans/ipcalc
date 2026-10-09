@@ -1,0 +1,9 @@
+[Split networks]
+Network:	192.168.1.0/26
+Network:	192.168.1.64/26
+
+Total:  	2
+Hosts/Net:	62
+
+[Unused networks]
+Network:	192.168.1.128/25

@@ -3,6 +3,7 @@
   "NETWORK":"127.0.0.1",
   "NETMASK":"255.255.255.255",
   "PREFIX":"32",
+  "CIDR":"127.0.0.1/32",
   "BROADCAST":"127.0.0.1",
   "ADDRSPACE":"Loopback",
   "MINADDR":"127.0.0.1",

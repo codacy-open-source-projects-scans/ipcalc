@@ -135,15 +135,20 @@ COUNTRY="Greece"
 ## IPv6
 
 ```
-$ ipcalc --all-info 2a03:2880:20:4f06:face:b00c:0:14/64
-Full Address:   2a03:2880:0020:4f06:face:b00c:0000:0014
-Address:        2a03:2880:20:4f06:face:b00c:0:14
+$ ipcalc --all-info 2a03:2880:20:4f06:21b:21ff:fe3a:5c7d/64
+Full Address:   2a03:2880:0020:4f06:021b:21ff:fe3a:5c7d
+Address:        2a03:2880:20:4f06:21b:21ff:fe3a:5c7d
 Full Network:   2a03:2880:0020:4f06:0000:0000:0000:0000/64
 Network:        2a03:2880:20:4f06::/64
 Netmask:        ffff:ffff:ffff:ffff:: = 64
 Reverse DNS:    6.0.f.4.0.2.0.0.0.8.8.2.3.0.a.2.ip6.arpa.
 
 Address space:  Global Unicast
+Interface ID:   021b:21ff:fe3a:5c7d
+EUI-64:         00:1b:21:ff:fe:3a:5c:7d
+MAC address:    00:1b:21:3a:5c:7d
+MAC scope:      universal
+MAC type:       individual
 HostMin:        2a03:2880:20:4f06::
 HostMax:        2a03:2880:20:4f06:ffff:ffff:ffff:ffff
 Hosts/Net:      2^(64) = 18446744073709551616
@@ -153,7 +158,7 @@ Country:        Ireland
 ```
 
 ```
-$ ipcalc -pnmb --minaddr --maxaddr --addrspace --geoinfo 2a03:2880:20:4f06:face:b00c:0:14/64
+$ ipcalc -pnmb --minaddr --maxaddr --addrspace --geoinfo 2a03:2880:20:4f06:21b:21ff:fe3a:5c7d/64
 NETMASK=ffff:ffff:ffff:ffff::
 PREFIX=64
 NETWORK=2a03:2880:20:4f06::
@@ -163,19 +168,51 @@ ADDRSPACE="Global Unicast"
 COUNTRY="Ireland"
 ```
 
+## Comparing networks
+
+Networks are compared by network address and prefix, so host bits are ignored.
+The exit status is 0 when the comparison holds and 1 when it does not.
+
+```
+$ ipcalc 192.168.1.15/24 --equals=192.168.1.200/24
+The networks are equal
+$ ipcalc 10.0.0.0/24 --equals=10.0.0.0/23
+The networks are not equal
+```
+
+```
+$ ipcalc 192.168.1.0/24 --subnet-of=192.168.0.0/16
+192.168.1.0/24 is a subnet of 192.168.0.0/16
+$ ipcalc 192.168.0.0/16 --subnet-of=192.168.1.0/24
+192.168.0.0/16 is not a subnet of 192.168.1.0/24
+```
+
+In scripts, use `-s` to print nothing and rely on the exit status alone:
+
+```
+$ ipcalc -s 2001:db8:1::/48 --subnet-of=2001:db8::/32 && echo "inside"
+inside
+```
+
 ## JSON output
 
 ```
-$ ipcalc --all-info -j 2a03:2880:20:4f06:face:b00c:0:14/64
+$ ipcalc --all-info -j 2a03:2880:20:4f06:21b:21ff:fe3a:5c7d/64
 {
-  "FULLADDRESS":"2a03:2880:0020:4f06:face:b00c:0000:0014",
-  "ADDRESS":"2a03:2880:20:4f06:face:b00c:0:14",
+  "FULLADDRESS":"2a03:2880:0020:4f06:021b:21ff:fe3a:5c7d",
+  "ADDRESS":"2a03:2880:20:4f06:21b:21ff:fe3a:5c7d",
   "FULLNETWORK":"2a03:2880:0020:4f06:0000:0000:0000:0000",
   "NETWORK":"2a03:2880:20:4f06::",
   "NETMASK":"ffff:ffff:ffff:ffff::",
   "PREFIX":"64",
+  "CIDR":"2a03:2880:20:4f06::/64",
   "REVERSEDNS":"6.0.f.4.0.2.0.0.0.8.8.2.3.0.a.2.ip6.arpa.",
   "ADDRSPACE":"Global Unicast",
+  "INTERFACEID":"021b:21ff:fe3a:5c7d",
+  "EUI64":"00:1b:21:ff:fe:3a:5c:7d",
+  "MACADDR":"00:1b:21:3a:5c:7d",
+  "MACSCOPE":"universal",
+  "MACTYPE":"individual",
   "MINADDR":"2a03:2880:20:4f06::",
   "MAXADDR":"2a03:2880:20:4f06:ffff:ffff:ffff:ffff",
   "ADDRESSES":"18446744073709551616",

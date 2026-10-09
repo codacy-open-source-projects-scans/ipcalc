@@ -3,12 +3,12 @@ stages:
  - deploy
 
 .fedora.latest.template: &fedora_template
-  image: fedora:38
+  image: fedora:44
   tags:
   - saas-linux-small-amd64
   before_script:
 #in F34 rubygem-ronn got replaced by rubygem-ronn-ng
-    - dnf install -y GeoIP-devel libmaxminddb-devel make meson ninja-build gcc libasan geolite2-{city,country} rubygem-ronn
+    - dnf install -y GeoIP-devel libmaxminddb-devel make meson ninja-build gcc libasan libubsan geolite2-{city,country} rubygem-ronn jq perl-interpreter perl-bignum
 
 fedora.nogeo:
   stage: generate
@@ -55,12 +55,13 @@ fedora.dyn_maxmind:
     - ninja -C build test
     - USE_GEOIP=no USE_RUNTIME_LINKING=yes USE_MAXMIND=yes CFLAGS="-O2 -g -Werror" make
 
-fedora.dyn_maxmind_with_asan:
+fedora.sanitizers:
   stage: generate
   <<: *fedora_template
   script:
     - export ASAN_OPTIONS="detect_leaks=0"
-    - meson setup build -Db_sanitize=address -Dwerror=true
+    - export UBSAN_OPTIONS="print_stacktrace=1"
+    - meson setup build -Duse_maxminddb=enabled -Duse_geoip=disabled -Duse_runtime_linking=enabled -Db_sanitize=address,undefined -Dc_args="-fno-sanitize-recover=undefined" -Dwerror=true
     - ninja -C build test
     - ./build/ipcalc -g 217.31.205.50
 
@@ -73,7 +74,8 @@ pages-test:
     - meson setup build -Db_coverage=true -Duse_maxminddb=enabled -Duse_geoip=disabled -Duse_runtime_linking=enabled --buildtype=plain -Dc_args="-Og -g -Werror"
     - ninja -C build
     - ninja -C build test
-    - ninja -C build coverage-html && mv build/meson-logs/coveragereport public
+    - ninja -C build coverage-html
+    - mv build/meson-logs/coveragereport public
     - tests/run-coverage.sh
   except:
     - master
@@ -86,7 +88,8 @@ pages:
     - meson setup build -Db_coverage=true -Duse_maxminddb=enabled -Duse_geoip=disabled -Duse_runtime_linking=enabled --buildtype=plain -Dc_args="-Og -g -Werror"
     - ninja -C build
     - ninja -C build test
-    - ninja -C build coverage-html && mv build/meson-logs/coveragereport public
+    - ninja -C build coverage-html
+    - mv build/meson-logs/coveragereport public
     - tests/run-coverage.sh
   coverage: '/coverage lines: \d+\.\d+/'
   artifacts:

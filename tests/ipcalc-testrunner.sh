@@ -46,6 +46,13 @@ TestFailure() {
 	[ $rc -eq 0 ] && fail "$output" || ok
 }
 
+TestStatus() {
+	echo -n "Checking $2 exits with $1... "
+	output=$(sh -c "$2" 2>&1)
+	rc=$?
+	[ $rc -eq $1 ] && ok || fail "exit status $rc: $output"
+}
+
 TestOutput() {
 	echo -n "Checking $1... "
 	output=$(sh -c "$1" 2>&1)
@@ -74,6 +81,7 @@ while [ $# -gt 0 ]; do
 	case $1 in
 		--test-success) TestSuccess "$2"; shift ;;
 		--test-failure) TestFailure "$2"; shift ;;
+		--test-status)  TestStatus "$2" "$3"; shift; shift ;;
 		--test-output)  TestOutput "$2" "$3"; shift; shift ;;
 		--test-outfile) TestOutputFile "$2" "$3"; shift; shift ;;
 		--test-equal)   TestEqual "$2" "$3"; shift; shift ;;

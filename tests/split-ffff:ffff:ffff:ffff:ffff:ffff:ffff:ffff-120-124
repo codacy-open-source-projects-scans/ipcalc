@@ -1,0 +1,20 @@
+[Split networks]
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ff00/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ff10/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ff20/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ff30/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ff40/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ff50/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ff60/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ff70/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ff80/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ff90/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffa0/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffb0/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffc0/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffd0/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffe0/124
+Network:	ffff:ffff:ffff:ffff:ffff:ffff:ffff:fff0/124
+
+Total:  	16
+Hosts/Net:	16

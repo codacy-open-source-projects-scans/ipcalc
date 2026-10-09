@@ -1,0 +1,9 @@
+Full Network:	fe80:0000:0000:0000:0000:0000:0000:0000/64
+Network:	fe80::/64
+Netmask:	ffff:ffff:ffff:ffff:: = 64
+Reverse DNS:	0.0.0.0.0.0.0.0.0.0.0.0.0.8.e.f.ip6.arpa.
+
+Address space:	Link-Scoped Unicast
+HostMin:	fe80::
+HostMax:	fe80::ffff:ffff:ffff:ffff
+Hosts/Net:	2^(64) = 18446744073709551616

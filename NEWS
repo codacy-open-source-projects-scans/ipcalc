@@ -1,6 +1,22 @@
-* Version 1.0.4 (unreleased)
-- Fixed issues in test output
-- Fixed deaggregation issue with large addresses (#31, #24)
+* Version 1.1.1 (unreleased)
+- Added the --cidr option, which prints the network in CIDR notation
+  (e.g., 192.168.123.0/24); the JSON output has the new CIDR key
+
+
+* Version 1.1.0 (released 2026-10-04)
+- Print the interface identifier of IPv6 unicast addresses and,
+  for Modified EUI-64 identifiers, the EUI-64, the MAC address with
+  --all-info (#29)
+- The --split option can be repeated with COUNT:PREFIX arguments to split
+  a network into subnets of different sizes (VLSM), e.g.,
+  "ipcalc -S 1:58 -S 64 2001:db8:1c88:6000::/56" (#23)
+- Added the --split-hosts option, which splits a network into subnets
+  that hold a number of hosts each, as the split of the Debian ipcalc
+- Fixed issues in deaggregation (#31, #24) and reverse-dns (#32)
+- In the JSON output of --all-info, REVERSEDNS is now always an array
+- Added the --equals, --subnet-of and --overlaps options, which compare
+  the provided network with another and print the result; the exit status
+  is 0 when the comparison holds, 1 when it does not, and 2 on error (#33)
 
 
 * Version 1.0.3 (released 2023-06-07)

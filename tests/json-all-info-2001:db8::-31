@@ -1,0 +1,14 @@
+{
+  "FULLNETWORK":"2001:0db8:0000:0000:0000:0000:0000:0000",
+  "NETWORK":"2001:db8::",
+  "NETMASK":"ffff:fffe::",
+  "PREFIX":"31",
+  "CIDR":"2001:db8::/31",
+  "REVERSEDNS":[
+    "8.b.d.0.1.0.0.2.ip6.arpa.",
+    "9.b.d.0.1.0.0.2.ip6.arpa."],
+  "ADDRSPACE":"Global Unicast",
+  "MINADDR":"2001:db8::",
+  "MAXADDR":"2001:db9:ffff:ffff:ffff:ffff:ffff:ffff",
+  "ADDRESSES":"158456325028528675187087900672"
+}

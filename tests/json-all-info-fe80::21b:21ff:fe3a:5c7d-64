@@ -1,0 +1,20 @@
+{
+  "FULLADDRESS":"fe80:0000:0000:0000:021b:21ff:fe3a:5c7d",
+  "ADDRESS":"fe80::21b:21ff:fe3a:5c7d",
+  "FULLNETWORK":"fe80:0000:0000:0000:0000:0000:0000:0000",
+  "NETWORK":"fe80::",
+  "NETMASK":"ffff:ffff:ffff:ffff::",
+  "PREFIX":"64",
+  "CIDR":"fe80::/64",
+  "REVERSEDNS":[
+    "0.0.0.0.0.0.0.0.0.0.0.0.0.8.e.f.ip6.arpa."],
+  "ADDRSPACE":"Link-Scoped Unicast",
+  "INTERFACEID":"021b:21ff:fe3a:5c7d",
+  "EUI64":"00:1b:21:ff:fe:3a:5c:7d",
+  "MACADDR":"00:1b:21:3a:5c:7d",
+  "MACSCOPE":"universal",
+  "MACTYPE":"individual",
+  "MINADDR":"fe80::",
+  "MAXADDR":"fe80::ffff:ffff:ffff:ffff",
+  "ADDRESSES":"18446744073709551616"
+}

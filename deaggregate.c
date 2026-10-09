@@ -136,12 +136,11 @@ void deaggregate_v4(const char *ip1s, const char *ip2s, unsigned flags)
 
 	while (base <= end) {
 		step = 0;
-		while ((base | ((uint64_t)1 << step)) != base) {
+		while (step < 32 && (base | ((uint64_t)1 << step)) != base) {
 			uint64_t b1 = base | ((uint64_t)(UINT32_MAX) >> (31-step));
-			if (b1 > end || (step == 32 && end == 0xffffffff))
+			if (b1 > end)
 				break;
 			step++;
-			assert(step <= 32);
 		}
 
 		print_ipv4_net(&jsonchain, base, 32-step, flags);
@@ -182,7 +181,7 @@ void deaggregate_v6(const char *ip1s, const char *ip2s, unsigned flags)
 	struct in6_addr ip1, ip2;
 	unsigned step;
 	struct in6_addr base, end;
-	struct in6_addr tmp;
+	struct in6_addr tmp, one;
 	unsigned jsonchain;
 
 	if (inet_pton(AF_INET6, ip1s, &ip1) <= 0) {
@@ -212,9 +211,12 @@ void deaggregate_v6(const char *ip1s, const char *ip2s, unsigned flags)
 	array_start(&jsonchain, "Deaggregated networks", "DEAGGREGATEDNETWORK");
 
 
-	while (ipv6_cmp(&base, &end) <= 0) {
+	memset(&one, 0, sizeof(one));
+	one.s6_addr[15] = 1;
+
+	while (1) {
 		step = 0;
-		while (ipv6_base_ok(&base, step)) {
+		while (step < 128 && ipv6_base_ok(&base, step)) {
 			memcpy(&tmp, &base, sizeof(tmp));
 			ipv6_orm(&tmp, step+1);
 			if (ipv6_cmp(&tmp, &end) > 0)
@@ -223,11 +225,17 @@ void deaggregate_v6(const char *ip1s, const char *ip2s, unsigned flags)
 		}
 
 		print_ipv6_net(&jsonchain, &base, 128-step, flags);
-		memset(&tmp, 0, sizeof(tmp));
-		ipv6_or1(&tmp, step);
 
-		/* v6add */
-		ipv6_add(&base, &tmp);
+		/* Stop at the network that contains the end of the range;
+		 * advancing past it would wrap around when it is the last
+		 * address of the IPv6 space. */
+		memcpy(&tmp, &base, sizeof(tmp));
+		ipv6_orm(&tmp, step);
+		if (ipv6_cmp(&tmp, &end) >= 0)
+			break;
+
+		memcpy(&base, &tmp, sizeof(base));
+		ipv6_add(&base, &one);
 	}
 
 	array_stop(&jsonchain);

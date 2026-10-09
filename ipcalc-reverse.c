@@ -81,6 +81,12 @@ char *calc_reverse_dns4(struct in_addr ip, unsigned prefix, struct in_addr netwo
 		unsigned min = (ntohl(network.s_addr) >> 16) & 0xff;
 		unsigned max = (ntohl(broadcast.s_addr) >> 16) & 0xff;
 		ret = asprintf(&str, "%u-%u.%u.in-addr.arpa.", min, max, byte1);
+	} else if (prefix > 0) {
+		unsigned min = (ntohl(network.s_addr) >> 24) & 0xff;
+		unsigned max = (ntohl(broadcast.s_addr) >> 24) & 0xff;
+		ret = asprintf(&str, "%u-%u.in-addr.arpa.", min, max);
+	} else {
+		ret = asprintf(&str, "in-addr.arpa.");
 	}
 #endif
 
@@ -98,30 +104,47 @@ static char hexchar(unsigned int val)
 	abort();
 }
 
-char *calc_reverse_dns6(struct in6_addr *ip, unsigned prefix)
+/* Returns the value of the idx-th nibble of ip, counting from the most
+ * significant one.
+ */
+static unsigned nibble(const struct in6_addr *ip, unsigned idx)
 {
-	unsigned i, j = 0;
-	char str[256];
-	unsigned max = prefix/8;
+	unsigned byte = ip->s6_addr[idx / 2];
 
-	if (prefix % 4 != 0)
-		return NULL;
+	return (idx % 2 == 0) ? (byte >> 4) : (byte & 0xf);
+}
 
-	if (prefix % 8 == 4) {
-		str[j++] = hexchar(ip->s6_addr[(prefix+4)/8-1] >> 4);
-		str[j++] = '.';
+/* Stores in names the ip6.arpa. domains covering the network ip/prefix and
+ * returns their number. The caller owns the returned strings.
+ *
+ * The nibble format of RFC 3596 can only express prefixes that are a multiple
+ * of 4 (the bit-string labels of RFC 2673 that could do otherwise are no
+ * longer in use, see RFC 3363). A network with any other prefix is covered by
+ * the 2^(4 - prefix % 4) domains at the next nibble boundary, which are
+ * returned in ascending order.
+ */
+unsigned calc_reverse_dns6(struct in6_addr *ip, unsigned prefix, char *names[MAX_REVERSE_DNS])
+{
+	/* 32 nibbles of "x." followed by "ip6.arpa." */
+	char str[32 * 2 + sizeof("ip6.arpa.")];
+	unsigned nibbles = (prefix + 3) / 4;
+	unsigned host_bits = nibbles * 4 - prefix;
+	unsigned count = 1u << host_bits;
+	unsigned i, k, j;
+
+	for (k = 0; k < count; k++) {
+		j = 0;
+		for (i = nibbles; i > 0; i--) {
+			unsigned val = nibble(ip, i - 1);
+
+			if (i == nibbles)
+				val = (val & ~(count - 1)) + k;
+			str[j++] = hexchar(val);
+			str[j++] = '.';
+		}
+		strcpy(&str[j], "ip6.arpa.");
+		names[k] = safe_strdup(str);
 	}
 
-	for (i=0;i<max;i++) {
-		str[j++] = hexchar(ip->s6_addr[max-1-i] & 0xf);
-		str[j++] = '.';
-
-		str[j++] = hexchar(ip->s6_addr[max-1-i] >> 4);
-		str[j++] = '.';
-
-	}
-
-	strcpy(&str[j], "ip6.arpa.");
-
-	return strdup(str);
+	return count;
 }

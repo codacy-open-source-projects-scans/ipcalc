@@ -1,0 +1,6 @@
+[Split networks]
+Network:	8000::/2
+Network:	c000::/2
+Network:	::/1
+
+Total:  	3

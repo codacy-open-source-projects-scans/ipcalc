@@ -1,0 +1,8 @@
+{
+  "SPLITNETWORK":[
+    "0.0.0.0/0"],
+  "NETS":"1",
+  "ADDRESSES":"4294967294",
+  "NEEDED":"4294967296",
+  "USEDNETWORK":"0.0.0.0/0"
+}

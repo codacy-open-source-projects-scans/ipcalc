@@ -5,6 +5,7 @@
   "NETWORK":"2a03:2880:20:4f00::",
   "NETMASK":"ffff:ffff:ffff:ff00::",
   "PREFIX":"56",
+  "CIDR":"2a03:2880:20:4f00::/56",
   "ADDRSPACE":"Global Unicast",
   "MINADDR":"2a03:2880:20:4f00::",
   "MAXADDR":"2a03:2880:20:4fff:ffff:ffff:ffff:ffff",

@@ -1,0 +1,16 @@
+Full Address:	fe80:0000:0000:0000:021b:21ff:fe3a:5c7d
+Address:	fe80::21b:21ff:fe3a:5c7d
+Full Network:	fe80:0000:0000:0000:0000:0000:0000:0000/64
+Network:	fe80::/64
+Netmask:	ffff:ffff:ffff:ffff:: = 64
+Reverse DNS:	0.0.0.0.0.0.0.0.0.0.0.0.0.8.e.f.ip6.arpa.
+
+Address space:	Link-Scoped Unicast
+Interface ID:	021b:21ff:fe3a:5c7d
+EUI-64:		00:1b:21:ff:fe:3a:5c:7d
+MAC address:	00:1b:21:3a:5c:7d
+MAC scope:	universal
+MAC type:	individual
+HostMin:	fe80::
+HostMax:	fe80::ffff:ffff:ffff:ffff
+Hosts/Net:	2^(64) = 18446744073709551616

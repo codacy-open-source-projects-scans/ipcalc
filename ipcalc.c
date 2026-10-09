@@ -22,7 +22,9 @@
 
 #define _GNU_SOURCE		/* asprintf */
 #include <ctype.h>
+#include <errno.h>
 #include <getopt.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -39,6 +41,7 @@
 #include "ipcalc.h"
 
 int beSilent = 0;
+int exit_failure = 1;
 static unsigned colors = 0;
 static unsigned flags = 0;
 
@@ -78,7 +81,7 @@ uint32_t prefix2mask(int prefix)
 	struct in_addr mask;
 	memset(&mask, 0, sizeof(mask));
 	if (prefix) {
-		return htonl(~((1 << (32 - prefix)) - 1));
+		return htonl(~((1U << (32 - prefix)) - 1));
 	} else {
 		return htonl(0);
 	}
@@ -399,119 +402,72 @@ static const char *p2_table(unsigned pow)
 		"42535295865117307932921825928971026432",
 		"85070591730234615865843651857942052864",
 		"170141183460469231731687303715884105728",
+		"340282366920938463463374607431768211456",
 	};
-	if (pow <= 127)
+	if (pow <= 128)
 		return pow2[pow];
 	return "";
 }
 
-static const char *ipv4_net_to_type(struct in_addr net)
+struct addr_block {
+	const char *net;
+	unsigned prefix;
+	const char *name;
+};
+
+/* Based on IANA's iana-ipv4-special-registry (updated 2025-10-09) and
+ * ipv4-address-space. The most specific block that contains the whole
+ * network wins, so the order of the rows does not matter. Blocks keep the
+ * name ipcalc has always printed when IANA renames them.
+ */
+static const struct addr_block ipv4_blocks[] = {
+	{"0.0.0.0", 32, "This host on this network"},
+	{"0.0.0.0", 8, "This network"},
+	{"10.0.0.0", 8, "Private Use"},
+	{"100.64.0.0", 10, "Shared Address Space"},
+	{"127.0.0.0", 8, "Loopback"},
+	{"169.254.0.0", 16, "Link Local"},
+	{"172.16.0.0", 12, "Private Use"},
+	{"192.0.0.0", 29, "IPv4 Service Continuity Prefix"},
+	{"192.0.0.8", 32, "IPv4 dummy address"},
+	{"192.0.0.9", 32, "Port Control Protocol Anycast"},
+	{"192.0.0.10", 32, "Traversal Using Relays around NAT Anycast"},
+	{"192.0.0.170", 32, "NAT64/DNS64 Discovery"},
+	{"192.0.0.171", 32, "NAT64/DNS64 Discovery"},
+	{"192.0.0.0", 24, "IETF Protocol Assignments"},
+	{"192.0.2.0", 24, "Documentation (TEST-NET-1)"},
+	{"192.31.196.0", 24, "AS112-v4"},
+	{"192.52.193.0", 24, "AMT"},
+	{"192.88.99.2", 32, "6a44-relay anycast address"},
+	{"192.88.99.0", 24, "6 to 4 Relay Anycast (Deprecated)"},
+	{"192.168.0.0", 16, "Private Use"},
+	{"192.175.48.0", 24, "Direct Delegation AS112 Service"},
+	{"198.18.0.0", 15, "Benchmarking"},
+	{"198.51.100.0", 24, "Documentation (TEST-NET-2)"},
+	{"203.0.113.0", 24, "Documentation (TEST-NET-3)"},
+	{"224.0.0.0", 4, "Multicast"},
+	{"255.255.255.255", 32, "Limited Broadcast"},
+	{"240.0.0.0", 4, "Reserved"},
+};
+
+static const char *ipv4_net_to_type(struct in_addr net, unsigned prefix)
 {
-	unsigned byte1 = (ntohl(net.s_addr) >> 24) & 0xff;
-	unsigned byte2 = (ntohl(net.s_addr) >> 16) & 0xff;
-	unsigned byte3 = (ntohl(net.s_addr) >> 8) & 0xff;
-	unsigned byte4 = (ntohl(net.s_addr)) & 0xff;
+	const struct addr_block *best = NULL;
+	struct in_addr block;
+	unsigned i;
 
-	/* based on IANA's iana-ipv4-special-registry and ipv4-address-space
-	 * Updated: 2020-04-06
-	 */
-	if (byte1 == 0) {
-		return "This host on this network";
+	for (i = 0; i < sizeof(ipv4_blocks) / sizeof(ipv4_blocks[0]); i++) {
+		if (prefix < ipv4_blocks[i].prefix)
+			continue;
+		if (best && best->prefix >= ipv4_blocks[i].prefix)
+			continue;
+		if (inet_pton(AF_INET, ipv4_blocks[i].net, &block) != 1)
+			abort();
+		if ((net.s_addr & prefix2mask(ipv4_blocks[i].prefix)) == block.s_addr)
+			best = &ipv4_blocks[i];
 	}
 
-	if (byte1 == 10) {
-		return "Private Use";
-	}
-
-	if (byte1 == 100 && (byte2 & 0xc0) == 64) {
-		return "Shared Address Space";
-	}
-
-	if (byte1 == 127) {
-		return "Loopback";
-	}
-
-	if (byte1 == 169 && byte2 == 254) {
-		return "Link Local";
-	}
-
-	if (byte1 == 172 && (byte2 & 0xf0) == 16) {
-		return "Private Use";
-	}
-
-	if (byte1 == 192 && byte2 == 0 && byte3 == 0 && byte4 <= 7) {
-		return "IPv4 Service Continuity Prefix";
-	}
-
-	if (byte1 == 192 && byte2 == 0 && byte3 == 0 && byte4 == 8) {
-		return "IPv4 dummy address";
-	}
-
-	if (byte1 == 192 && byte2 == 0 && byte3 == 0 && byte4 == 9) {
-		return "Port Control Protocol Anycast";
-	}
-
-	if (byte1 == 192 && byte2 == 0 && byte3 == 0 && byte4 == 10) {
-		return "Traversal Using Relays around NAT Anycast";
-	}
-
-	if (byte1 == 192 && byte2 == 0 && byte3 == 0 && (byte4 == 170 || byte4 == 171)) {
-		return "NAT64/DNS64 Discovery";
-	}
-
-	if (byte1 == 192 && byte2 == 0 && byte3 == 0) {
-		return "IETF Protocol Assignments";
-	}
-
-	if (byte1 == 192 && byte2 == 0 && byte3 == 2) {
-		return "Documentation (TEST-NET-1)";
-	}
-
-	if (byte1 == 198 && byte2 == 51 && byte3 == 100) {
-		return "Documentation (TEST-NET-2)";
-	}
-
-	if (byte1 == 203 && byte2 == 0 && byte3 == 113) {
-		return "Documentation (TEST-NET-3)";
-	}
-
-	if (byte1 == 192 && byte2 == 88 && byte3 == 99) {
-		return "6 to 4 Relay Anycast (Deprecated)";
-	}
-
-	if (byte1 == 192 && byte2 == 31 && byte3 == 196) {
-		return "AS112-v4";
-	}
-
-	if (byte1 == 192 && byte2 == 52 && byte3 == 193) {
-		return "AMT";
-	}
-
-	if (byte1 == 192 && byte2 == 168) {
-		return "Private Use";
-	}
-
-	if (byte1 == 192 && byte2 == 175 && byte3 == 48) {
-		return "Direct Delegation AS112 Service";
-	}
-
-	if (byte1 == 255 && byte2 == 255 && byte3 == 255 && byte4 == 255) {
-		return "Limited Broadcast";
-	}
-
-	if (byte1 == 198 && (byte2 & 0xfe) == 18) {
-		return "Benchmarking";
-	}
-
-	if (byte1 >= 224 && byte1 <= 239) {
-		return "Multicast";
-	}
-
-	if ((byte1 & 0xf0) == 240) {
-		return "Reserved";
-	}
-
-	return "Internet";
+	return best ? best->name : "Internet";
 }
 
 static
@@ -531,7 +487,7 @@ const char *ipv4_net_to_class(struct in_addr net)
 		return "Class C";
 	}
 
-	if (byte1 >= 224 && byte1 < 239) {
+	if (byte1 >= 224 && byte1 < 240) {
 		return "Class D";
 	}
 
@@ -563,8 +519,8 @@ char *ipv4_prefix_to_hosts(char *hosts, unsigned hosts_size, unsigned prefix)
 	if (prefix >= 31) {
 		snprintf(hosts, hosts_size, "%s", p2_table(32 - prefix));
 	} else {
-		unsigned tmp = (1 << (32 - prefix)) - 2;
-		snprintf(hosts, hosts_size, "%u", tmp);
+		uint64_t tmp = (UINT64_C(1) << (32 - prefix)) - 2;
+		snprintf(hosts, hosts_size, "%" PRIu64, tmp);
 	}
 	return hosts;
 }
@@ -576,7 +532,6 @@ char *ipv6_prefix_to_hosts(char *hosts, unsigned hosts_size, unsigned prefix)
 }
 
 
-static
 int get_ipv4_info(const char *ipStr, int prefix, ip_info_st * info,
 		  unsigned flags)
 {
@@ -612,7 +567,7 @@ int get_ipv4_info(const char *ipStr, int prefix, ip_info_st * info,
 				fprintf(stderr,
 					"Memory allocation failure line %d\n",
 					__LINE__);
-				abort();
+				exit(exit_failure);
 			}
 			ipStr = tmp;
 		}
@@ -643,7 +598,7 @@ int get_ipv4_info(const char *ipStr, int prefix, ip_info_st * info,
 	if (inet_ntop(AF_INET, &netmask, namebuf, INET_ADDRSTRLEN) == NULL) {
 		fprintf(stderr, "inet_ntop failure at line %d\n",
 			__LINE__);
-		exit(1);
+		exit(exit_failure);
 	}
 	info->netmask = safe_strdup(namebuf);
 	info->prefix = prefix;
@@ -654,24 +609,25 @@ int get_ipv4_info(const char *ipStr, int prefix, ip_info_st * info,
 	if (inet_ntop(AF_INET, &broadcast, namebuf, INET_ADDRSTRLEN) == NULL) {
 		fprintf(stderr, "inet_ntop failure at line %d\n",
 			__LINE__);
-		exit(1);
+		exit(exit_failure);
 	}
 	info->broadcast = safe_strdup(namebuf);
 
 	network = calc_network(ip, prefix);
 
-	info->reverse_dns = calc_reverse_dns4(network, prefix, network, broadcast);
+	info->reverse_dns[0] = calc_reverse_dns4(network, prefix, network, broadcast);
+	info->reverse_dns_count = info->reverse_dns[0] ? 1 : 0;
 
 	memset(namebuf, '\0', sizeof(namebuf));
 	if (inet_ntop(AF_INET, &network, namebuf, INET_ADDRSTRLEN) == NULL) {
 		fprintf(stderr, "inet_ntop failure at line %d\n",
 			__LINE__);
-		exit(1);
+		exit(exit_failure);
 	}
 
 	info->network = safe_strdup(namebuf);
 
-	info->type = ipv4_net_to_type(network);
+	info->type = ipv4_net_to_type(network, prefix);
 	info->class = ipv4_net_to_class(network);
 
 	if (prefix < 32) {
@@ -683,7 +639,7 @@ int get_ipv4_info(const char *ipStr, int prefix, ip_info_st * info,
 		    NULL) {
 			fprintf(stderr, "inet_ntop failure at line %d\n",
 				__LINE__);
-			exit(1);
+			exit(exit_failure);
 		}
 		info->hostmin = safe_strdup(namebuf);
 
@@ -759,109 +715,63 @@ static char *ipv6_mask_to_str(const struct in6_addr *mask)
 	return safe_strdup(buf);
 }
 
+/* Based on IANA's iana-ipv6-special-registry (updated 2025-10-09)
+ * followed by the unicast and multicast blocks of ipv6-address-space.
+ * As for IPv4, the most specific matching block wins and renamed blocks
+ * keep the name ipcalc has always printed.
+ */
+static const struct addr_block ipv6_blocks[] = {
+	{"::1", 128, "Loopback Address"},
+	{"::", 128, "Unspecified Address"},
+	{"::ffff:0:0", 96, "IPv4-mapped Address"},
+	{"64:ff9b::", 96, "IPv4-IPv6 Translat."},
+	{"64:ff9b:1::", 48, "IPv4-IPv6 Translat."},
+	{"100::", 64, "Discard-Only Address Block"},
+	{"100:0:0:1::", 64, "Dummy IPv6 Prefix"},
+	{"2001::", 32, "TEREDO"},
+	{"2001:1::1", 128, "Port Control Protocol Anycast"},
+	{"2001:1::2", 128, "Traversal Using Relays around NAT Anycast"},
+	{"2001:1::3", 128, "DNS-SD Service Registration Protocol Anycast"},
+	{"2001:2::", 48, "Benchmarking"},
+	{"2001:3::", 32, "AMT"},
+	{"2001:4:112::", 48, "AS112-v6"},
+	{"2001:10::", 28, "Deprecated (previously ORCHID)"},
+	{"2001:20::", 28, "ORCHIDv2"},
+	{"2001:30::", 28, "Drone Remote ID Protocol Entity Tags (DETs) Prefix"},
+	{"2001::", 23, "IETF Protocol Assignments"},
+	{"2001:db8::", 32, "Documentation"},
+	{"2002::", 16, "6to4"},
+	{"2620:4f:8000::", 48, "Direct Delegation AS112 Service"},
+	{"3fff::", 20, "Documentation"},
+	{"5f00::", 16, "Segment Routing (SRv6) SIDs"},
+	{"2000::", 3, "Global Unicast"},
+	{"fc00::", 7, "Unique Local Unicast"},
+	{"fe80::", 10, "Link-Scoped Unicast"},
+	{"ff00::", 8, "Multicast"},
+};
+
 static const char *ipv6_net_to_type(struct in6_addr *net, int prefix)
 {
-	uint16_t word1 = net->s6_addr[0] << 8 | net->s6_addr[1];
-	uint16_t word2 = net->s6_addr[2] << 8 | net->s6_addr[3];
+	const struct addr_block *best = NULL;
+	struct in6_addr block, mask;
+	unsigned i, j;
 
-	/* based on IANA's iana-ipv6-special-registry and ipv6-address-space
-	 * Updated: 2019-09-13
-	 */
-	if (prefix == 128 && memcmp
-	    (net->s6_addr,
-	     "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
-	     16) == 0)
-		return "Loopback Address";
-
-	if (prefix == 128 && memcmp
-	    (net->s6_addr,
-	     "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
-	     16) == 0)
-		return "Unspecified Address";
-
-	if (prefix >= 96 && memcmp
-	    (net->s6_addr, "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff",
-	     12) == 0)
-		return "IPv4-mapped Address";
-
-	if (prefix >= 96 && memcmp
-	    (net->s6_addr, "\x00\x64\xff\x9b\x00\x00\x00\x00\x00\x00\x00\x00",
-	     12) == 0)
-		return "IPv4-IPv6 Translat.";
-
-	if (prefix >= 48 && memcmp
-	    (net->s6_addr, "\x00\x64\xff\x9b\x00\x01",
-	     6) == 0)
-		return "IPv4-IPv6 Translat.";
-
-	if (prefix >= 96 && memcmp
-	    (net->s6_addr, "\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
-	     12) == 0)
-		return "Discard-Only Address Block";
-
-	if (prefix >= 32 && word1 == 0x2001 && word2 == 0)
-		return "TEREDO";
-
-	if (prefix == 128 && memcmp
-	    (net->s6_addr, "\x20\x01\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01",
-	     16) == 0)
-		return "Port Control Protocol Anycast";
-
-	if (prefix == 128 && memcmp
-	    (net->s6_addr, "\x20\x01\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02",
-	     16) == 0)
-		return "Traversal Using Relays around NAT Anycast";
-
-	if (prefix >= 48 && memcmp
-	    (net->s6_addr, "\x20\x01\x00\x02\x00\x00",
-	     6) == 0)
-		return "Benchmarking";
-
-	if (prefix >= 32 && word1 == 0x2001 && word2 == 0x3)
-		return "AMT";
-
-	if (prefix >= 48 && memcmp
-	    (net->s6_addr, "\x20\x01\x00\x04\x01\x12",
-	     6) == 0)
-		return "AS112-v6";
-
-	if (prefix >= 28 && word1 == 0x2001 && (word2 & 0xfff0) == 0x10)
-		return "Deprecated (previously ORCHID)";
-
-	if (prefix >= 28 && word1 == 0x2001 && (word2 & 0xfff0) == 0x20)
-		return "ORCHIDv2";
-
-	if (prefix >= 23 && word1 == 0x2001 && (word2 & 0xff00) <= 0x100)
-		return "IETF Protocol Assignments";
-
-	if (prefix >= 32 && word1 == 0x2001 && word2 == 0xdb8)
-		return "Documentation";
-
-	if (word1 == 0x2002)
-		return "6to4";
-
-	if (prefix >= 48 && memcmp
-	    (net->s6_addr, "\x26\x20\x00\x4f\x80\x00",
-	     6) == 0)
-		return "Direct Delegation AS112 Service";
-
-	if ((word1 & 0xe000) == 0x2000) {
-		return "Global Unicast";
+	for (i = 0; i < sizeof(ipv6_blocks) / sizeof(ipv6_blocks[0]); i++) {
+		if ((unsigned)prefix < ipv6_blocks[i].prefix)
+			continue;
+		if (best && best->prefix >= ipv6_blocks[i].prefix)
+			continue;
+		if (inet_pton(AF_INET6, ipv6_blocks[i].net, &block) != 1 ||
+		    ipv6_prefix_to_mask(ipv6_blocks[i].prefix, &mask) < 0)
+			abort();
+		for (j = 0; j < 16; j++)
+			if ((net->s6_addr[j] & mask.s6_addr[j]) != block.s6_addr[j])
+				break;
+		if (j == 16)
+			best = &ipv6_blocks[i];
 	}
 
-	if (((net->s6_addr[0] & 0xfe) == 0xfc)) {
-		return "Unique Local Unicast";
-	}
-
-	if ((word1 & 0xffc0) == 0xfe80) {
-		return "Link-Scoped Unicast";
-	}
-
-	if ((net->s6_addr[0] & 0xff) == 0xff) {
-		return "Multicast";
-	}
-
-	return "Reserved";
+	return best ? best->name : "Reserved";
 }
 
 static
@@ -885,7 +795,60 @@ char *expand_ipv6(struct in6_addr *ip6)
 	return safe_strdup(buf);
 }
 
-static
+static int iid_is_zero(const unsigned char *iid)
+{
+	unsigned i;
+
+	for (i = 0; i < 8; i++)
+		if (iid[i] != 0)
+			return 0;
+	return 1;
+}
+
+/* RFC 4291 Appendix A: a Modified EUI-64 built from a 48-bit MAC has
+ * ff:fe inserted between the OUI and the NIC-specific octets.
+ */
+static int iid_is_mac_derived(const unsigned char *iid)
+{
+	return iid[3] == 0xff && iid[4] == 0xfe;
+}
+
+/* RFC 4291 section 2.5.1: unicast addresses outside ::/3 have a 64-bit
+ * interface identifier. The u/g bits only carry meaning when the
+ * identifier was derived from an IEEE MAC (RFC 7136).
+ */
+static void get_ipv6_iid_info(const struct in6_addr *ip6, ip_info_st *info)
+{
+	const unsigned char *iid = &ip6->s6_addr[8];
+	unsigned char mac0;
+
+	if ((ip6->s6_addr[0] & 0xe0) == 0 || ip6->s6_addr[0] == 0xff)
+		return;
+
+	/* The all-zero identifier is the Subnet-Router anycast address
+	 * (RFC 4291 section 2.6.1), not a host's identifier.
+	 */
+	if (iid_is_zero(iid))
+		return;
+
+	safe_asprintf(&info->iid, "%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+		      iid[0], iid[1], iid[2], iid[3],
+		      iid[4], iid[5], iid[6], iid[7]);
+
+	if (!iid_is_mac_derived(iid))
+		return;
+
+	/* Modified EUI-64 inverts the universal/local bit */
+	mac0 = iid[0] ^ 0x02;
+	safe_asprintf(&info->eui64, "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+		      mac0, iid[1], iid[2], iid[3],
+		      iid[4], iid[5], iid[6], iid[7]);
+	safe_asprintf(&info->mac, "%02x:%02x:%02x:%02x:%02x:%02x",
+		      mac0, iid[1], iid[2], iid[5], iid[6], iid[7]);
+	info->mac_scope = (mac0 & 0x02) ? "local" : "universal";
+	info->mac_type = (mac0 & 0x01) ? "group" : "individual";
+}
+
 int get_ipv6_info(const char *ipStr, int prefix, ip_info_st * info,
 		  unsigned flags)
 {
@@ -950,7 +913,8 @@ int get_ipv6_info(const char *ipStr, int prefix, ip_info_st * info,
 	info->expanded_network = expand_ipv6(&network);
 	info->type = ipv6_net_to_type(&network, prefix);
 
-	info->reverse_dns = calc_reverse_dns6(&network, prefix);
+	info->reverse_dns_count = calc_reverse_dns6(&network, prefix, info->reverse_dns);
+	get_ipv6_iid_info(&ip6, info);
 
 	if (prefix < 128) {
 		info->hostmin = safe_strdup(errBuf);
@@ -1061,7 +1025,6 @@ static char *generate_ip_network(unsigned prefix, unsigned flags)
 	return p;
 }
 
-static
 int str_to_prefix(unsigned *flags, const char *prefixStr, unsigned fix)
 {
 	int prefix = -1;
@@ -1083,6 +1046,97 @@ int str_to_prefix(unsigned *flags, const char *prefixStr, unsigned fix)
 	return prefix;
 }
 
+/* [COUNT:]PREFIX, where PREFIX may also be a netmask */
+static int parse_split_req(unsigned *flags, const char *str, struct split_req *req)
+{
+	const char *prefixStr = str;
+	const char *sep = strchr(str, ':');
+	int prefix;
+
+	req->count = 0;
+	if (sep) {
+		char *end;
+
+		errno = 0;
+		/* strtoull() accepts leading spaces and a sign, and wraps
+		 * "-1" to UINT64_MAX */
+		if (!isdigit((unsigned char)str[0]))
+			goto bad_count;
+		req->count = strtoull(str, &end, 10);
+		if (end != sep || errno != 0 || req->count == 0) {
+ bad_count:
+			if (!beSilent)
+				fprintf(stderr, "ipcalc: bad split count: %s\n", str);
+			return -1;
+		}
+		prefixStr = sep + 1;
+	}
+
+	prefix = str_to_prefix(flags, prefixStr, 1);
+	if (prefix < 0) {
+		if (!beSilent)
+			fprintf(stderr,
+				"ipcalc: bad %s prefix: %s\n", ((*flags) & FLAG_IPV6)?"IPv6":"IPv4", str);
+		return -1;
+	}
+	req->prefix = prefix;
+
+	return 0;
+}
+
+static int parse_split_hosts(unsigned flags, const char *str,
+			     struct split_req **reqs, unsigned *nreqs)
+{
+	unsigned width = (flags & FLAG_IPV6) ? 128 : 32;
+	const char *p = str;
+
+	while (1) {
+		struct split_req *req;
+		uint64_t hosts, size;
+		unsigned bits = 0;
+		char *end = NULL;
+
+		errno = 0;
+		/* see parse_split_req() */
+		if (!isdigit((unsigned char)*p))
+			goto bad_count;
+		hosts = strtoull(p, &end, 10);
+		if (errno != 0 || hosts == 0 || (*end != ',' && *end != 0)) {
+ bad_count:
+			if (!beSilent)
+				fprintf(stderr, "ipcalc: bad host count: %s\n", str);
+			return -1;
+		}
+
+		/* IPv4 subnets also need the network and broadcast addresses */
+		size = hosts;
+		if (!(flags & FLAG_IPV6)) {
+			if (hosts > UINT32_MAX - 1) {
+				if (!beSilent)
+					fprintf(stderr, "ipcalc: too many hosts requested: %" PRIu64 "\n", hosts);
+				return -1;
+			}
+			size += 2;
+		}
+		while (bits < 64 && (UINT64_C(1) << bits) < size)
+			bits++;
+
+		*reqs = realloc(*reqs, (*nreqs + 1) * sizeof((*reqs)[0]));
+		if (*reqs == NULL)
+			exit(exit_failure);
+		req = &(*reqs)[(*nreqs)++];
+		req->prefix = width - bits;
+		req->count = 1;
+		req->hosts = hosts;
+
+		if (*end == 0)
+			break;
+		p = end + 1;
+	}
+
+	return 0;
+}
+
 #define OPT_ALLINFO 1
 #define OPT_MINADDR 2
 #define OPT_MAXADDR 3
@@ -1092,11 +1146,29 @@ int str_to_prefix(unsigned *flags, const char *prefixStr, unsigned fix)
 #define OPT_REVERSE 7
 #define OPT_CLASS_PREFIX 8
 #define OPT_NO_DECORATE 9
+#define OPT_HELP 10
+#define OPT_SPLIT_HOSTS 11
+#define OPT_EQUALS 12
+#define OPT_SUBNET_OF 13
+#define OPT_OVERLAPS 14
+#define OPT_CIDR 15
+
+#define IS_COMPARE_OPT(c) ((c) == OPT_EQUALS || (c) == OPT_SUBNET_OF || (c) == OPT_OVERLAPS)
+
+#if defined(USE_GEOIP) || defined(USE_MAXMIND)
+# define GEO_SHORT_OPTION "g"
+#else
+# define GEO_SHORT_OPTION ""
+#endif
 
 static const struct option long_options[] = {
 	{"check", 0, 0, 'c'},
+	{"equals", 1, 0, OPT_EQUALS},
+	{"subnet-of", 1, 0, OPT_SUBNET_OF},
+	{"overlaps", 1, 0, OPT_OVERLAPS},
 	{"random-private", 1, 0, 'r'},
 	{"split", 1, 0, 'S'},
+	{"split-hosts", 1, 0, OPT_SPLIT_HOSTS},
 	{"deaggregate", 1, 0, 'd'},
 	{"info", 0, 0, 'i'},
 	{"all-info", 0, 0, OPT_ALLINFO},
@@ -1112,6 +1184,7 @@ static const struct option long_options[] = {
 #endif
 	{"netmask", 0, 0, 'm'},
 	{"network", 0, 0, 'n'},
+	{"cidr", 0, 0, OPT_CIDR},
 	{"prefix", 0, 0, 'p'},
 	{"class-prefix", 0, 0, OPT_CLASS_PREFIX},
 	{"minaddr", 0, 0, OPT_MINADDR},
@@ -1122,7 +1195,7 @@ static const struct option long_options[] = {
 	{"no-decorate", 0, 0, OPT_NO_DECORATE},
 	{"json", 0, 0, 'j'},
 	{"version", 0, 0, 'v'},
-	{"help", 0, 0, '?'},
+	{"help", 0, 0, OPT_HELP},
 	{"usage", 0, 0, OPT_USAGE},
 	{NULL, 0, 0, 0}
 };
@@ -1133,10 +1206,17 @@ void usage(unsigned verbose)
 	if (verbose) {
 		fprintf(stderr, "Usage: ipcalc [OPTION...]\n");
 		fprintf(stderr, "  -c, --check                     Validate IP address\n");
+		fprintf(stderr, "      --equals=NET                Succeed if the network equals NET\n");
+		fprintf(stderr, "      --subnet-of=NET             Succeed if the network is within NET\n");
+		fprintf(stderr, "      --overlaps=NET              Succeed if the network shares an address\n");
+		fprintf(stderr, "                                  with NET\n");
 		fprintf(stderr, "  -r, --random-private=PREFIX     Generate a random private IP network using\n");
 		fprintf(stderr, "                                  the supplied prefix or mask.\n");
-		fprintf(stderr, "  -S, --split=PREFIX              Split the provided network using the\n");
-		fprintf(stderr, "                                  provided prefix/netmask\n");
+		fprintf(stderr, "  -S, --split=[COUNT:]PREFIX      Split the provided network using the\n");
+		fprintf(stderr, "                                  provided prefix/netmask; repeat with\n");
+		fprintf(stderr, "                                  COUNT for subnets of different sizes\n");
+		fprintf(stderr, "      --split-hosts=N1,N2,...     Split the provided network into subnets\n");
+		fprintf(stderr, "                                  that hold N1, N2, ... hosts\n");
 		fprintf(stderr, "  -d, --deaggregate=IP1-IP2       Deaggregate the provided address range\n");
 		fprintf(stderr, "  -i, --info                      Print information on the provided IP address\n");
 		fprintf(stderr, "                                  (default)\n");
@@ -1149,6 +1229,8 @@ void usage(unsigned verbose)
 		fprintf(stderr, "  -b, --broadcast                 Display calculated broadcast address\n");
 		fprintf(stderr, "  -m, --netmask                   Display netmask for IP\n");
 		fprintf(stderr, "  -n, --network                   Display network address\n");
+		fprintf(stderr, "      --cidr                      Display network address and prefix in\n");
+		fprintf(stderr, "                                  CIDR notation\n");
 		fprintf(stderr, "  -p, --prefix                    Display network prefix\n");
 		fprintf(stderr, "      --minaddr                   Display the minimum address in the network\n");
 		fprintf(stderr, "      --maxaddr                   Display the maximum address in the network\n");
@@ -1170,17 +1252,23 @@ void usage(unsigned verbose)
 		fprintf(stderr, "                                  by the IPv4 address class\n");
 		fprintf(stderr, "      --no-decorate               Print only the requested information\n");
 		fprintf(stderr, "  -j, --json                      JSON output\n");
-		fprintf(stderr, "  -s, --silent                    Don't ever display error messages\n");
+		fprintf(stderr, "  -s, --silent                    Don't ever display error messages, nor\n");
+		fprintf(stderr, "                                  the result of a comparison\n");
 		fprintf(stderr, "  -v, --version                   Display program version\n");
 		fprintf(stderr, "  -?, --help                      Show this help message\n");
 		fprintf(stderr, "      --usage                     Display brief usage message\n");
 	} else {
-		fprintf(stderr, "Usage: ipcalc [-46sv?] [-c|--check] [-r|--random-private=STRING] [-i|--info]\n");
+		fprintf(stderr, "Usage: ipcalc [-46sv?] [-c|--check] [--equals=NET] [--subnet-of=NET]\n");
+		fprintf(stderr, "        [--overlaps=NET] [-r|--random-private=STRING] [-i|--info]\n");
 		fprintf(stderr, "        [--all-info] [-4|--ipv4] [-6|--ipv6] [-a|--address] [-b|--broadcast]\n");
+#if defined(USE_GEOIP) || defined(USE_MAXMIND)
 		fprintf(stderr, "        [-h|--hostname] [-o|--lookup-host=STRING] [-g|--geoinfo]\n");
-		fprintf(stderr, "        [-m|--netmask] [-n|--network] [-p|--prefix] [--minaddr] [--maxaddr]\n");
-		fprintf(stderr, "        [--addresses] [--addrspace] [-j|--json] [-s|--silent] [-v|--version]\n");
-		fprintf(stderr, "        [--reverse-dns] [--class-prefix]\n");
+#else
+		fprintf(stderr, "        [-h|--hostname] [-o|--lookup-host=STRING]\n");
+#endif
+		fprintf(stderr, "        [-m|--netmask] [-n|--network] [--cidr] [-p|--prefix] [--minaddr]\n");
+		fprintf(stderr, "        [--maxaddr] [--addresses] [--addrspace] [-j|--json] [-s|--silent]\n");
+		fprintf(stderr, "        [-v|--version] [--reverse-dns] [--class-prefix]\n");
 		fprintf(stderr, "        [-?|--help] [--usage]\n");
 	}
 }
@@ -1212,7 +1300,7 @@ void array_start(unsigned * const jsonfirst, const char *head, const char *json_
 {
 	if (flags & FLAG_JSON) {
 		if (*jsonfirst == JSON_NEXT) {
-			printf(",\n  ");
+			printf(",\n");
 		}
 
 		printf("  \"%s\":[\n  ", json_head);
@@ -1281,6 +1369,26 @@ json_printf(unsigned * const jsonfirst, const char *jsontitle, const char *fmt, 
 
 	return;
 }
+
+/* Host names and geo values come from outside ipcalc and may contain
+ * characters that are not allowed unescaped in a JSON string (RFC 8259).
+ */
+static void json_print_string(const char *str)
+{
+	const unsigned char *p;
+
+	putchar('"');
+	for (p = (const unsigned char *)str; *p; p++) {
+		if (*p == '"' || *p == '\\')
+			printf("\\%c", *p);
+		else if (*p < 0x20)
+			printf("\\u%04x", *p);
+		else
+			putchar(*p);
+	}
+	putchar('"');
+}
+
 void va_json_printf(unsigned * const jsonfirst, const char *jsontitle, const char *fmt, va_list varglist)
 {
 	int ret;
@@ -1298,9 +1406,8 @@ void va_json_printf(unsigned * const jsonfirst, const char *jsontitle, const cha
 
 	fprintf(stdout, "  ");
 	if (jsontitle)
-		fprintf(stdout, "\"%s\":\"%s\"", jsontitle, str);
-	else
-		fprintf(stdout, "\"%s\"", str);
+		fprintf(stdout, "\"%s\":", jsontitle);
+	json_print_string(str);
 	if (*jsonfirst == JSON_FIRST)
 		*jsonfirst = JSON_NEXT;
 	else if (*jsonfirst == JSON_ARRAY_FIRST)
@@ -1411,10 +1518,16 @@ dist_printf(unsigned * const jsonfirst, const char *title, const char *jsontitle
 #define NETWORK_NAME "NETWORK"
 #define NETMASK_NAME "NETMASK"
 #define PREFIX_NAME "PREFIX"
+#define CIDR_NAME "CIDR"
 #define BROADCAST_NAME "BROADCAST"
 #define REVERSEDNS_NAME "REVERSEDNS"
 #define ADDRSPACE_NAME "ADDRSPACE"
 #define ADDRCLASS_NAME "ADDRCLASS"
+#define INTERFACEID_NAME "INTERFACEID"
+#define EUI64_NAME "EUI64"
+#define MACADDR_NAME "MACADDR"
+#define MACSCOPE_NAME "MACSCOPE"
+#define MACTYPE_NAME "MACTYPE"
 #define MINADDR_NAME "MINADDR"
 #define MAXADDR_NAME "MAXADDR"
 #define ADDRESSES_NAME "ADDRESSES"
@@ -1422,6 +1535,18 @@ dist_printf(unsigned * const jsonfirst, const char *title, const char *jsontitle
 #define COUNTRY_NAME "COUNTRY"
 #define CITY_NAME "CITY"
 #define COORDINATES_NAME "COORDINATES"
+
+static void show_iid_info(unsigned * const jsonchain, const ip_info_st *info)
+{
+	if (info->iid)
+		pretty_dist_printf(jsonchain, "Interface ID:\t", INTERFACEID_NAME, "%s", info->iid);
+	if (info->eui64) {
+		pretty_dist_printf(jsonchain, "EUI-64:\t\t", EUI64_NAME, "%s", info->eui64);
+		pretty_dist_printf(jsonchain, "MAC address:\t", MACADDR_NAME, "%s", info->mac);
+		pretty_dist_printf(jsonchain, "MAC scope:\t", MACSCOPE_NAME, "%s", info->mac_scope);
+		pretty_dist_printf(jsonchain, "MAC type:\t", MACTYPE_NAME, "%s", info->mac_type);
+	}
+}
 
 /*!
   \fn main(int argc, const char **argv)
@@ -1436,16 +1561,25 @@ int main(int argc, char **argv)
 {
 	char *randomStr = NULL;
 	char *hostname = NULL;
-	char *splitStr = NULL;
+	char **splitStrs = NULL;
+	unsigned nsplits = 0;
+	char **splitHostsStrs = NULL;
+	unsigned nsplitHosts = 0;
 	char *ipStr = NULL, *prefixStr = NULL, *netmaskStr = NULL, *chptr = NULL;
-	int prefix = -1, splitPrefix = -1;
+	int prefix = -1;
 	ip_info_st info;
 	int r = 0;
 	unsigned jsonchain = JSON_FIRST;
+	unsigned i;
 	enum app_t app = 0;
+	char *cmpStr = NULL;
+	enum net_comparison cmpOp = CMP_EQUALS;
+	unsigned ncmps = 0;
+	unsigned userFlags;
+	int badOption = 0;
 
 	while (1) {
-		int c = getopt_long(argc, argv, "S:cr:i46abho:gmnpjsvd:", long_options, NULL);
+		int c = getopt_long(argc, argv, "S:cr:i46abho:" GEO_SHORT_OPTION "mnpjsvd:", long_options, NULL);
 		if (c == -1)
 			break;
 
@@ -1453,21 +1587,43 @@ int main(int argc, char **argv)
 			case 'c':
 				app |= APP_CHECK_ADDRESS;
 				break;
+			case OPT_EQUALS:
+			case OPT_SUBNET_OF:
+			case OPT_OVERLAPS:
+				app |= APP_COMPARE;
+				cmpOp = c == OPT_EQUALS ? CMP_EQUALS :
+					c == OPT_SUBNET_OF ? CMP_SUBNET_OF : CMP_OVERLAPS;
+				ncmps++;
+				exit_failure = 2;
+				cmpStr = safe_strdup(optarg);
+				if (cmpStr == NULL) exit(exit_failure);
+				break;
 			case 'S':
 				app |= APP_SPLIT;
-				splitStr = safe_strdup(optarg);
-				if (splitStr == NULL) exit(1);
+				splitStrs = realloc(splitStrs, (nsplits + 1) * sizeof(splitStrs[0]));
+				if (splitStrs == NULL) exit(exit_failure);
+				splitStrs[nsplits] = safe_strdup(optarg);
+				if (splitStrs[nsplits] == NULL) exit(exit_failure);
+				nsplits++;
+				break;
+			case OPT_SPLIT_HOSTS:
+				app |= APP_SPLIT;
+				splitHostsStrs = realloc(splitHostsStrs, (nsplitHosts + 1) * sizeof(splitHostsStrs[0]));
+				if (splitHostsStrs == NULL) exit(exit_failure);
+				splitHostsStrs[nsplitHosts] = safe_strdup(optarg);
+				if (splitHostsStrs[nsplitHosts] == NULL) exit(exit_failure);
+				nsplitHosts++;
 				break;
 			case 'd':
 				app |= APP_DEAGGREGATE;
 				ipStr = safe_strdup(optarg);
-				if (ipStr == NULL) exit(1);
+				if (ipStr == NULL) exit(exit_failure);
 				break;
 			case 'r':
 				app |= APP_SHOW_INFO;
 				flags |= FLAG_RANDOM;
 				randomStr = safe_strdup(optarg);
-				if (randomStr == NULL) exit(1);
+				if (randomStr == NULL) exit(exit_failure);
 				break;
 			case 'i':
 				app |= APP_SHOW_INFO;
@@ -1506,12 +1662,14 @@ int main(int argc, char **argv)
 				app |= APP_SHOW_INFO;
 				flags |= FLAG_RESOLVE_IP;
 				hostname = safe_strdup(optarg);
-				if (hostname == NULL) exit(1);
+				if (hostname == NULL) exit(exit_failure);
 				break;
+#if defined(USE_GEOIP) || defined(USE_MAXMIND)
 			case 'g':
 				app |= APP_SHOW_INFO;
 				flags |= FLAG_SHOW_GEOIP;
 				break;
+#endif
 			case 'm':
 				app |= APP_SHOW_INFO;
 				flags |= FLAG_SHOW_NETMASK;
@@ -1523,6 +1681,10 @@ int main(int argc, char **argv)
 			case 'p':
 				app |= APP_SHOW_INFO;
 				flags |= FLAG_SHOW_PREFIX;
+				break;
+			case OPT_CIDR:
+				app |= APP_SHOW_INFO;
+				flags |= FLAG_SHOW_CIDR;
 				break;
 			case OPT_MINADDR:
 				app |= APP_SHOW_INFO;
@@ -1552,13 +1714,38 @@ int main(int argc, char **argv)
 			case 'v':
 				app |= APP_VERSION;
 				break;
+			/* after an invalid option, help must not turn the
+			 * error into a success */
 			case OPT_USAGE:
+				if (badOption)
+					break;
 				usage(0);
 				exit(0);
-			case '?':
+			case OPT_HELP:
+				if (badOption)
+					break;
 				usage(1);
 				exit(0);
+			case '?':
+				/* -? is not in the short options, so getopt reports
+				 * it like an unknown option */
+				if (optopt == '?' && !badOption) {
+					usage(1);
+					exit(0);
+				}
+				if (IS_COMPARE_OPT(optopt))
+					exit_failure = 2;
+				/* keep parsing, since a later comparison option
+				 * changes the exit status; report only this error */
+				badOption = 1;
+				opterr = 0;
+				break;
 		}
+	}
+
+	if (badOption) {
+		usage(1);
+		exit(exit_failure);
 	}
 
 	if (optind < argc) {
@@ -1566,7 +1753,7 @@ int main(int argc, char **argv)
 			if (!beSilent)
 				fprintf(stderr,
 					"ipcalc: superfluous option given\n");
-			exit(1);
+			exit(exit_failure);
 		}
 
 		ipStr = argv[optind++];
@@ -1588,19 +1775,21 @@ int main(int argc, char **argv)
 	if (geo_setup() == 0 && (flags & FLAG_SHOW_ALL_INFO))
 		flags |= FLAG_GET_GEOIP;
 
-	if (bit_count(app) > 1) {
+	if (bit_count(app) > 1 || ncmps > 1) {
 		if (!beSilent)
 			fprintf(stderr,
 				"ipcalc: you cannot mix these options\n");
-		return 1;
+		return exit_failure;
 	}
 
 	if ((flags & FLAG_IPV6) && (flags & FLAG_IPV4)) {
 		if (!beSilent)
 			fprintf(stderr,
 				"ipcalc: you cannot specify both IPv4 and IPv6\n");
-		return 1;
+		return exit_failure;
 	}
+
+	userFlags = flags;
 
 	/* if there is a : in the address, it is an IPv6 address.
 	 * Note that we allow -4, and -6 to be given explicitly, so
@@ -1620,6 +1809,7 @@ int main(int argc, char **argv)
 		return 0;
 	case APP_SPLIT:
 	case APP_CHECK_ADDRESS:
+	case APP_COMPARE:
 	case APP_SHOW_INFO:
 		/* These are handled lower into the info app */
 		break;
@@ -1632,7 +1822,7 @@ int main(int argc, char **argv)
 			if (!beSilent)
 				fprintf(stderr,
 					"ipcalc: provided superfluous parameter '%s'\n", ipStr);
-			return 1;
+			return exit_failure;
 		}
 
 		prefix = str_to_prefix(&flags, randomStr, 1);
@@ -1640,7 +1830,7 @@ int main(int argc, char **argv)
 			if (!beSilent)
 				fprintf(stderr,
 					"ipcalc: bad %s prefix: %s\n", (flags&FLAG_IPV6)?"IPv6":"IPv4", randomStr);
-			return 1;
+			return exit_failure;
 		}
 
 		ipStr = generate_ip_network(prefix, flags);
@@ -1649,7 +1839,7 @@ int main(int argc, char **argv)
 				fprintf(stderr,
 					"ipcalc: cannot generate network with prefix: %u\n",
 					prefix);
-			return 1;
+			return exit_failure;
 		}
 	}
 
@@ -1659,7 +1849,7 @@ int main(int argc, char **argv)
 				"ipcalc: ip address expected\n");
 			usage(1);
 		}
-		return 1;
+		return exit_failure;
 	}
 
 	/* resolve IP address if a hostname was given */
@@ -1675,7 +1865,7 @@ int main(int argc, char **argv)
 			if (!beSilent)
 				fprintf(stderr,
 					"ipcalc: could not resolve %s\n", hostname);
-			return 1;
+			return exit_failure;
 		}
 
 		if ((flags & FLAG_IPV4) == 0 && strchr(ipStr, ':') != NULL) {
@@ -1692,7 +1882,7 @@ int main(int argc, char **argv)
 					chptr);
 				usage(1);
 			}
-			return 1;
+			return exit_failure;
 		}
 	}
 
@@ -1708,7 +1898,7 @@ int main(int argc, char **argv)
 			if (!beSilent)
 				fprintf(stderr,
 					"ipcalc: bad %s prefix: %s\n", (flags & FLAG_IPV6)?"IPv6":"IPv4", prefixStr);
-			return 1;
+			return exit_failure;
 		}
 	}
 
@@ -1722,7 +1912,7 @@ int main(int argc, char **argv)
 						"ipcalc: both netmask and prefix specified\n");
 					usage(1);
 				}
-				return 1;
+				return exit_failure;
 			}
 		}
 
@@ -1732,34 +1922,60 @@ int main(int argc, char **argv)
 				if (!beSilent)
 					fprintf(stderr,
 						"ipcalc: bad IPv4 prefix: %s\n", prefixStr);
-				return 1;
+				return exit_failure;
 			}
 		}
 		r = get_ipv4_info(ipStr, prefix, &info, flags);
 	}
 
 	if (r < 0) {
-		return 1;
+		return exit_failure;
 	}
 
 	switch (app) {
 	case APP_SPLIT:
-		splitPrefix = str_to_prefix(&flags, splitStr, 1);
-		if (splitPrefix < 0) {
-			if (!beSilent)
-				fprintf(stderr,
-					"ipcalc: bad %s prefix: %s\n", (flags & FLAG_IPV6)?"IPv6":"IPv4", splitStr);
-			return 1;
-		}
+		{
+			struct split_req *reqs = NULL;
+			unsigned i, nfill = 0, nreqs = 0;
 
-		if (flags & FLAG_IPV6) {
-			show_split_networks_v6(splitPrefix, &info, flags);
-		} else {
-			show_split_networks_v4(splitPrefix, &info, flags);
+			if (nsplits && nsplitHosts) {
+				if (!beSilent)
+					fprintf(stderr,
+						"ipcalc: --split-hosts cannot be combined with --split\n");
+				return exit_failure;
+			}
+
+			for (i = 0; i < nsplitHosts; i++) {
+				if (parse_split_hosts(flags, splitHostsStrs[i], &reqs, &nreqs) < 0)
+					return exit_failure;
+			}
+
+			if (nsplits) {
+				reqs = calloc(nsplits, sizeof(reqs[0]));
+				if (reqs == NULL)
+					exit(exit_failure);
+				nreqs = nsplits;
+			}
+
+			for (i = 0; i < nsplits; i++) {
+				if (parse_split_req(&flags, splitStrs[i], &reqs[i]) < 0)
+					return exit_failure;
+
+				if (reqs[i].count == 0 && ++nfill > 1) {
+					if (!beSilent)
+						fprintf(stderr,
+							"ipcalc: only one split prefix may be given without a count\n");
+					return exit_failure;
+				}
+			}
+
+			show_split_networks(reqs, nreqs, &info, flags);
 		}
 		return 0;
 	case APP_CHECK_ADDRESS:
 		return 0;
+	case APP_COMPARE:
+		return compare_networks(cmpOp, &info, flags, cmpStr, userFlags);
 	default:
 		break;
 	}
@@ -1804,6 +2020,7 @@ int main(int argc, char **argv)
 				pretty_printf(&jsonchain, "Network:\t", NETWORK_NAME, "%s", info.network);
 				pretty_printf(&jsonchain, "Netmask:\t", NETMASK_NAME, "%s", info.netmask);
 				pretty_printf(&jsonchain, "Prefix:\t", PREFIX_NAME, "%u", info.prefix);
+				pretty_printf(&jsonchain, "CIDR:\t", CIDR_NAME, "%s/%u", info.network, info.prefix);
 			}
 
 
@@ -1811,8 +2028,18 @@ int main(int argc, char **argv)
 				pretty_printf(&jsonchain, "Broadcast:\t", BROADCAST_NAME, "%s", info.broadcast);
 		}
 
-		if ((flags & FLAG_SHOW_ALL_INFO) && info.reverse_dns)
-			pretty_printf(&jsonchain, "Reverse DNS:\t", REVERSEDNS_NAME, "%s", info.reverse_dns);
+		if (flags & FLAG_SHOW_ALL_INFO) {
+			/* always an array in JSON, so that its type does not depend on the prefix */
+			if ((flags & FLAG_JSON) && info.reverse_dns_count > 0) {
+				array_start(&jsonchain, "Reverse DNS", REVERSEDNS_NAME);
+				for (i = 0; i < info.reverse_dns_count; i++)
+					json_printf(&jsonchain, NULL, "%s", info.reverse_dns[i]);
+				array_stop(&jsonchain);
+			} else {
+				for (i = 0; i < info.reverse_dns_count; i++)
+					pretty_printf(&jsonchain, "Reverse DNS:\t", REVERSEDNS_NAME, "%s", info.reverse_dns[i]);
+			}
+		}
 
 		if (!single_host || (flags & FLAG_JSON)) {
 			output_separate(&jsonchain);
@@ -1822,6 +2049,9 @@ int main(int argc, char **argv)
 
 			if ((flags & FLAG_SHOW_ALL_INFO) && info.class)
 				pretty_dist_printf(&jsonchain, "Address class:\t", ADDRCLASS_NAME, "%s", info.class);
+
+			if (flags & FLAG_SHOW_ALL_INFO)
+				show_iid_info(&jsonchain, &info);
 
 			if (info.hostmin)
 				pretty_printf(&jsonchain, "HostMin:\t", MINADDR_NAME, "%s", info.hostmin);
@@ -1841,6 +2071,9 @@ int main(int argc, char **argv)
 
 			if ((flags & FLAG_SHOW_ALL_INFO) && info.class)
 				pretty_dist_printf(&jsonchain, "Address class:\t", ADDRCLASS_NAME, "%s", info.class);
+
+			if (flags & FLAG_SHOW_ALL_INFO)
+				show_iid_info(&jsonchain, &info);
 		}
 
 		if (info.geoip_country || info.geoip_city || info.geoip_coord) {
@@ -1895,11 +2128,27 @@ int main(int argc, char **argv)
 			printf("%s\n", info.network);
 		}
 
-		if (flags & FLAG_SHOW_REVERSE) {
+		if (flags & FLAG_SHOW_CIDR) {
 			if (! (flags & FLAG_NO_DECORATE)) {
-				printf(REVERSEDNS_NAME"=");
+				printf(CIDR_NAME"=");
 			}
-			printf("%s\n", info.reverse_dns);
+			printf("%s/%u\n", info.network, info.prefix);
+		}
+
+		if ((flags & FLAG_SHOW_REVERSE) && info.reverse_dns_count > 0) {
+			if (flags & FLAG_NO_DECORATE) {
+				/* one domain per line, as with --deaggregate */
+				for (i = 0; i < info.reverse_dns_count; i++)
+					printf("%s\n", info.reverse_dns[i]);
+			} else if (info.reverse_dns_count == 1) {
+				printf(REVERSEDNS_NAME"=%s\n", info.reverse_dns[0]);
+			} else {
+				/* a quoted, space-separated list keeps the output usable with eval */
+				printf(REVERSEDNS_NAME"=\"");
+				for (i = 0; i < info.reverse_dns_count; i++)
+					printf("%s%s", i > 0 ? " " : "", info.reverse_dns[i]);
+				printf("\"\n");
+			}
 		}
 
 		if ((flags & FLAG_SHOW_MINADDR) && info.hostmin) {

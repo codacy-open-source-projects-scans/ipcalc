@@ -1,0 +1,9 @@
+Full Address:	fe80:0000:0000:0000:0000:00ff:fe00:0001
+Address:	fe80::ff:fe00:1
+Reverse DNS:	1.0.0.0.0.0.e.f.f.f.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.e.f.ip6.arpa.
+Address space:	Link-Scoped Unicast
+Interface ID:	0000:00ff:fe00:0001
+EUI-64:		02:00:00:ff:fe:00:00:01
+MAC address:	02:00:00:00:00:01
+MAC scope:	local
+MAC type:	individual

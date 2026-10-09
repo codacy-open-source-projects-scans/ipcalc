@@ -1,0 +1,4 @@
+# Meson's coverage-html passes the source root to genhtml as --prefix.
+# Our sources sit directly in it, which lcov 2.0's genhtml cannot handle
+# ("file error for ipcalc.c"), so keep the full paths instead.
+genhtml_no_prefix = 1

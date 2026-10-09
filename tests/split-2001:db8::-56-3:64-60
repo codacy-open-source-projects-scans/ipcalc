@@ -1,0 +1,26 @@
+[Split networks]
+Network:	2001:db8::/64
+Network:	2001:db8:0:1::/64
+Network:	2001:db8:0:2::/64
+Network:	2001:db8:0:10::/60
+Network:	2001:db8:0:20::/60
+Network:	2001:db8:0:30::/60
+Network:	2001:db8:0:40::/60
+Network:	2001:db8:0:50::/60
+Network:	2001:db8:0:60::/60
+Network:	2001:db8:0:70::/60
+Network:	2001:db8:0:80::/60
+Network:	2001:db8:0:90::/60
+Network:	2001:db8:0:a0::/60
+Network:	2001:db8:0:b0::/60
+Network:	2001:db8:0:c0::/60
+Network:	2001:db8:0:d0::/60
+Network:	2001:db8:0:e0::/60
+Network:	2001:db8:0:f0::/60
+
+Total:  	18
+
+[Unused networks]
+Network:	2001:db8:0:3::/64
+Network:	2001:db8:0:4::/62
+Network:	2001:db8:0:8::/61

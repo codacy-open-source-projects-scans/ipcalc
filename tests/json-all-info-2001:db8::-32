@@ -1,0 +1,13 @@
+{
+  "FULLNETWORK":"2001:0db8:0000:0000:0000:0000:0000:0000",
+  "NETWORK":"2001:db8::",
+  "NETMASK":"ffff:ffff::",
+  "PREFIX":"32",
+  "CIDR":"2001:db8::/32",
+  "REVERSEDNS":[
+    "8.b.d.0.1.0.0.2.ip6.arpa."],
+  "ADDRSPACE":"Documentation",
+  "MINADDR":"2001:db8::",
+  "MAXADDR":"2001:db8:ffff:ffff:ffff:ffff:ffff:ffff",
+  "ADDRESSES":"79228162514264337593543950336"
+}

@@ -1,0 +1,10 @@
+Full Network:	2001:0db8:0000:0000:0000:0000:0000:0000/31
+Network:	2001:db8::/31
+Netmask:	ffff:fffe:: = 31
+Reverse DNS:	8.b.d.0.1.0.0.2.ip6.arpa.
+Reverse DNS:	9.b.d.0.1.0.0.2.ip6.arpa.
+
+Address space:	Global Unicast
+HostMin:	2001:db8::
+HostMax:	2001:db9:ffff:ffff:ffff:ffff:ffff:ffff
+Hosts/Net:	2^(97) = 158456325028528675187087900672
