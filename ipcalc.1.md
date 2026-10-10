@@ -12,16 +12,48 @@ IP network information in human readable format, in a format suitable for
 parsing in scripts, generate random private addresses, resolve an IP address,
 or check the validity of an address.
 
-By default or when the **--info** or **--all-info** parameters
-are specified the information provided is free form and human readable.
-Otherwise the output is JSON formatted when **-j** is specified,
-or when specific options are given (e.g., **--prefix**) the output is
-in the **VAR=VALUE** format.
+The options select what **ipcalc** prints: by default, or with
+**--info** or **--all-info**, a summary of the network; with specific
+info options (e.g., **--prefix**), only those values. The **--format**
+option selects how it is printed, as described in the Output format
+section.
+Multiple options may be specified. It is required to specify an IP
+address; several operations require a netmask or a CIDR prefix as well.
 
-The various options specify what information **ipcalc** should display
-on standard output. Multiple options may be specified.  It is required
-to specify an IP address; several operations require
-a netmask or a CIDR prefix as well.
+
+## Output format
+
+The **--format**=_FORMAT_ option selects one of these formats:
+
+* **human**
+  Titled lines, as in the summary. Colors are used only when the output
+  is a terminal and the NO_COLOR environment variable is not set. This
+  is the default for the summary and for **--split**, **--split-hosts**
+  and **--deaggregate**.
+
+* **shell**
+  **VAR=VALUE** lines that can be passed to the shell's eval; a value
+  that contains characters special to the shell, such as a space, is
+  quoted and escaped. This is the default for the specific info options.
+
+* **json**
+  A JSON object, whose values are all strings or arrays of strings.
+
+* **value**
+  The values only, one per line; a value that would be quoted in the
+  **shell** format keeps its quotes.
+
+Each format applies to whatever is selected: the summary, or exactly
+the values of the specific info options, e.g.,
+"ipcalc --format=json -n -m 192.168.1.5/24" prints only NETWORK and
+NETMASK. The summary has no **value** form. **--info** and
+**--all-info** cannot be combined with specific info options, except
+**--lookup-host**, which then provides the address of the summary.
+**--split**, **--split-hosts** and **--deaggregate** accept **human**,
+**json** and **value**; the comparison options accept only **human**.
+
+Scripts should always pass **--format**, so that their output does not
+depend on the defaults.
 
 
 ## Options
@@ -35,7 +67,7 @@ a netmask or a CIDR prefix as well.
 * **--equals**=NET, **--subnet-of**=NET, **--overlaps**=NET
   Compare the provided network with NET and print the result, such as
   "The networks overlap" or "192.168.0.0/24 is a subnet of 192.168.0.0/23";
-  nothing is printed with **--no-decorate**, **--json** or **--silent**.
+  nothing is printed with **--silent**.
   **--equals** holds if both have the
   same network address and prefix, **--subnet-of** if every address of
   the network is in NET (equal networks included), and **--overlaps** if
@@ -49,12 +81,16 @@ a netmask or a CIDR prefix as well.
   Example "ipcalc 192.168.0.1/24 --subnet-of=192.168.0.0/23".
 
 * **-i**, **--info**
-  Display generic information on the provided network in human readable format.
+  Display basic information on the provided network in human readable format,
+  in a short summary, plus the fields of any specific info options given
+  (e.g., **--reverse-dns**).
   This is the default option if no other options are provided.
 
 * **--all-info**
-  Display verbose information on the provided network and addresses in human
-  readable format. That includes GeoIP information.
+  Display all the information ipcalc can determine on the provided network and
+  addresses in human readable format, which may be long. That includes
+  geographic information, but not the hostname, which requires a DNS lookup
+  (see **--hostname**).
 
   For an IPv6 unicast address it also prints the interface identifier, i.e.,
   the low 64 bits of the address, unless they are all zero or the address
@@ -68,9 +104,9 @@ a netmask or a CIDR prefix as well.
 
 * **-S**, **--split**=[COUNT:]PREFIX
   Split the provided network using the specified prefix or netmask. That is,
-  split up the network into smaller chunks of a specified prefix. When
-  combined with no-decorate mode (**--no-decorate**), the split networks
-  will be printed in raw form. Example "ipcalc -S 26 192.168.1.0/24".
+  split up the network into smaller chunks of a specified prefix. With
+  **--format=value**, only the split networks are printed, one per line.
+  Example "ipcalc -S 26 192.168.1.0/24".
 
   The option can be repeated to split the network into subnets of different
   sizes, also known as a VLSM (variable-length subnet mask) split. Each
@@ -79,7 +115,7 @@ a netmask or a CIDR prefix as well.
   space that remains. Requests are allocated from the start of the network,
   the largest subnets first, while the subnets are printed in the order
   of the requests. Space that is not allocated to any request is printed
-  as unused networks, except in no-decorate mode. If the network is too
+  as unused networks, except with **--format=value**. If the network is too
   small for the requests, nothing is printed and the exit status is 1.
   Example "ipcalc -S 1:58 -S 64 2001:db8:1c88:6000::/56".
 
@@ -99,8 +135,8 @@ a netmask or a CIDR prefix as well.
 * **-d**, **--deaggregate**
   Deaggregates the provided address range. That is, print the networks that
   cover the range. The range is given using the '-' separator, e.g.,
-  "192.168.1.3-192.168.1.23". When combined with no-decorate mode
-  (**--no-decorate**), the networks are printed in raw form.
+  "192.168.1.3-192.168.1.23". With **--format=value**, only the networks
+  are printed, one per line.
 
 * **-r**, **--random-private**
   Generate a random private address using the supplied prefix or mask. By default
@@ -109,14 +145,14 @@ a netmask or a CIDR prefix as well.
   **VAR=VALUE** format.
 
 * **-h**, **--hostname**
-  Display the hostname for the given IP address.
-  The variable exposed is HOSTNAME. When combined with no-decorate mode
-  (**--no-decorate**), only the hostname is printed.
+  Display the hostname for the given IP address. The address must be a
+  single address; a network (e.g., "127.0.0.1/8") is rejected.
+  The variable exposed is HOSTNAME.
 
-* **-o**, **--lookup-host**
-  Display the IP address for the given hostname.
-  The variable exposed is ADDRESS. When combined with no-decorate mode
-  (**--no-decorate**), only the address is printed.
+* **-o**, **--lookup-host**=_NAME_
+  Display the IP address for the given hostname. With **--info** or
+  **--all-info**, display the summary of that address instead.
+  The variable exposed is ADDRESS.
 
 * **-4**, **--ipv4**
   Explicitly specify the IPv4 address family.
@@ -134,8 +170,8 @@ a netmask or a CIDR prefix as well.
 
 * **-g**, **--geoinfo**
   Display geographic information for the given IP address. This option
-  requires libGeoIP/libmaxminddb to be available, and is not accepted
-  when ipcalc is built without either. The variables exposed are
+  requires libmaxminddb to be available, and is not accepted
+  when ipcalc is built without it. The variables exposed are
   COUNTRYCODE, COUNTRY, CITY and COORDINATES (when available).
 
 * **-m**, **--netmask**
@@ -144,6 +180,12 @@ a netmask or a CIDR prefix as well.
   that the IP address is in a complete class A, B, or C network. Note,
   however, that many networks no longer use the default netmasks in IPv4.
   The variable exposed is NETMASK.
+
+* **--wildcard**
+  Display the wildcard mask, the inverse of the netmask that Cisco ACLs
+  and OSPF use, e.g., "0.0.0.255" for a /24 network. It applies to IPv4
+  only; nothing is printed for IPv6. The variable exposed is WILDCARD.
+  The summary shows it with **--all-info**.
 
 * **-p**, **--prefix**
   Show the prefix for the given mask/IP address.
@@ -160,18 +202,18 @@ a netmask or a CIDR prefix as well.
 * **--cidr**
   Display the network address and the prefix in CIDR notation, e.g.,
   "192.168.123.0/24". The prefix is included for a single address too.
-  The variable exposed is CIDR. When combined with no-decorate mode
-  (**--no-decorate**), only the network and prefix are printed, e.g.,
-  "ipcalc -r 24 --cidr --no-decorate" prints a random private network.
+  The variable exposed is CIDR. For example,
+  "ipcalc -r 24 --cidr --format=value" prints a random private network.
 
 * **--reverse-dns**
   Display the reverse DNS for the given IP address and netmask.
   Reverse DNS domains for IPv6 (RFC 3596) can only be delegated at 4-bit
   boundaries, so for an IPv6 prefix that is not a multiple of 4 the network
   is covered by up to 8 domains, which are all printed. In that case the
-  REVERSEDNS variable holds a quoted, space-separated list, with
-  **--no-decorate** each domain is printed on its own line. In the JSON
-  output of **--all-info**, REVERSEDNS is always an array.
+  REVERSEDNS variable holds a quoted, space-separated list, and with
+  **--format=value** each domain is printed on its own line. The summary
+  shows it with **--all-info**, and in JSON REVERSEDNS is always an
+  array.
   The variable exposed is REVERSEDNS.
 
 * **--minaddr**
@@ -190,22 +232,40 @@ a netmask or a CIDR prefix as well.
   Display address space allocation information for the provided network.
   The variable exposed is ADDRSPACE.
 
-* **--no-decorate**
-  Print only the requested information. That when combined with
-  split networks option, will only print the networks without any
-  additions for readability. Values that contain a space, such as
-  the address space, are still enclosed in double quotes.
-
-* **-j**, **--json**
-  Print the output as a JSON object instead of the usual output format.
-  In info mode the object always contains the summary information of
-  **--info** (or of **--all-info** when given), regardless of which
-  specific info options are given. It applies to **--split** and
-  **--deaggregate** as well, while **--check** and the comparison options
-  print nothing.
+* **--format**=_FORMAT_
+  Print the output as **human**, **shell**, **json** or **value**; see
+  the Output format section.
 
 * **-s**, **--silent**
   Don't ever display error messages, nor the result of a comparison.
+
+
+## Deprecated options
+
+These options are kept for compatibility with earlier versions. On a
+terminal, ipcalc prints a hint that names the replacement.
+
+* **-j**, **--json**
+  Print the summary as a JSON object, even when specific info options
+  are given, which only add their values to it; with **--split**,
+  **--split-hosts** and **--deaggregate** print JSON, and with the
+  comparison options print nothing. Use **--format=json**, which prints
+  only the selected values.
+
+* **--no-decorate**
+  Print the values of the specific info options, or the networks of
+  **--split**, **--split-hosts** and **--deaggregate**, without titles;
+  print the summary without colors; and with the comparison options
+  print nothing. It is ignored when **-j** is given. Use
+  **--format=value**, or for the summary **--format=human** with the
+  NO_COLOR environment variable set.
+
+
+## Environment
+
+* **NO_COLOR**
+  When set, to any value, the **human** format is printed without colors,
+  even on a terminal.
 
 
 ## Examples
@@ -216,6 +276,7 @@ a netmask or a CIDR prefix as well.
     Address:        193.92.150.2
     Network:        193.92.150.0/24
     Netmask:        255.255.255.0 = 24
+    Wildcard:       0.0.0.255
     Broadcast:      193.92.150.255
     Reverse DNS:    150.92.193.in-addr.arpa.
 
@@ -230,15 +291,16 @@ a netmask or a CIDR prefix as well.
 
 ### Display information in key-value format
 
-    $ ipcalc -pnmb --minaddr --maxaddr --geoinfo --addrspace 193.92.150.2/255.255.255.224
+    $ ipcalc --format=shell -pnmb --minaddr --maxaddr --geoinfo --addrspace 193.92.150.2/255.255.255.224
+    NETWORK=193.92.150.0
     NETMASK=255.255.255.224
     PREFIX=27
     BROADCAST=193.92.150.31
-    NETWORK=193.92.150.0
+    ADDRSPACE=Internet
     MINADDR=193.92.150.1
     MAXADDR=193.92.150.30
-    ADDRSPACE="Internet"
-    COUNTRY="Greece"
+    COUNTRYCODE=GR
+    COUNTRY=Greece
 
 ### Display all information of an IPv6
 
@@ -281,7 +343,7 @@ a netmask or a CIDR prefix as well.
 
 ### Display JSON output
 
-    $ ipcalc --all-info -j 2a03:2880:20:4f06:face:b00c:0:14/64
+    $ ipcalc --all-info --format=json 2a03:2880:20:4f06:face:b00c:0:14/64
     {
       "FULLADDRESS":"2a03:2880:0020:4f06:face:b00c:0000:0014",
       "ADDRESS":"2a03:2880:20:4f06:face:b00c:0:14",
@@ -290,7 +352,8 @@ a netmask or a CIDR prefix as well.
       "NETMASK":"ffff:ffff:ffff:ffff::",
       "PREFIX":"64",
       "CIDR":"2a03:2880:20:4f06::/64",
-      "REVERSEDNS":"6.0.f.4.0.2.0.0.0.8.8.2.3.0.a.2.ip6.arpa.",
+      "REVERSEDNS":[
+        "6.0.f.4.0.2.0.0.0.8.8.2.3.0.a.2.ip6.arpa."],
       "ADDRSPACE":"Global Unicast",
       "INTERFACEID":"face:b00c:0000:0014",
       "MINADDR":"2a03:2880:20:4f06::",
@@ -347,7 +410,7 @@ a netmask or a CIDR prefix as well.
 
 ### Split an IPv6 prefix into one /58 and /64 networks in the remaining space
 
-    $ ipcalc -S 1:58 -S 64 2001:db8:1c88:6000::/56 --no-decorate
+    $ ipcalc --format=value -S 1:58 -S 64 2001:db8:1c88:6000::/56
     2001:db8:1c88:6000::/58
     2001:db8:1c88:6040::/64
     2001:db8:1c88:6041::/64
@@ -368,18 +431,24 @@ a netmask or a CIDR prefix as well.
 
 ### Lookup of a hostname
 
-    $ ipcalc --lookup-host localhost --no-decorate
+    $ ipcalc --format=value --lookup-host localhost
     ::1
 
 ### IPv4 lookup of a hostname
 
-    $ ipcalc --lookup-host localhost --no-decorate -4
+    $ ipcalc --format=value --lookup-host localhost -4
     127.0.0.1
 
 ### Reverse lookup of a hostname
 
-    $ ipcalc -h 127.0.0.1 --no-decorate
+    $ ipcalc --format=value -h 127.0.0.1
     localhost
+
+### Use the values in a shell script
+
+    $ eval "$(ipcalc --format=shell -n -p 192.168.1.5/24)"
+    $ echo "$NETWORK/$PREFIX"
+    192.168.1.0/24
 
 ## Authors
 * Nikos Mavrogiannopoulos <n.mavrogiannopoulos@gmail.com>

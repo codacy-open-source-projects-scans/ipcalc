@@ -1,4 +1,3 @@
-USE_GEOIP?=no
 USE_MAXMIND?=yes
 USE_RUNTIME_LINKING?=yes
 
@@ -11,15 +10,6 @@ CC?=gcc
 CFLAGS?=-O2 -g -Wall
 LDFLAGS=$(LIBS)
 
-ifeq ($(USE_GEOIP),yes)
-ifeq ($(USE_RUNTIME_LINKING),yes)
-LDFLAGS+=-ldl
-CFLAGS+=-DUSE_GEOIP -DUSE_RUNTIME_LINKING -DLIBPATH="\"$(LIBPATH)\""
-else
-LDFLAGS+=-lGeoIP
-CFLAGS+=-DUSE_GEOIP
-endif # DYN GEOIP
-else  # GEOIP
 ifeq ($(USE_MAXMIND),yes)
 ifeq ($(USE_RUNTIME_LINKING),yes)
 LDFLAGS+=-ldl
@@ -29,11 +19,10 @@ LDFLAGS+=-lmaxminddb
 CFLAGS+=-DUSE_MAXMIND
 endif # DYN MAXMIND
 endif # MAXMIND
-endif # not GEOIP
 
 all: ipcalc
 
-ipcalc: ipcalc.c ipv6.c deaggregate.c ipcalc-geoip.c ipcalc-maxmind.c ipcalc-reverse.c ipcalc-utils.c netsplit.c netcompare.c
+ipcalc: ipcalc.c ipv6.c deaggregate.c ipcalc-maxmind.c ipcalc-reverse.c ipcalc-utils.c netsplit.c netcompare.c
 	$(CC) $(CFLAGS) -DVERSION="\"$(VERSION)\"" $^ -o $@ $(LDFLAGS)
 
 clean:

@@ -23,7 +23,6 @@ deps = []
 have_geo = false
 
 use_maxminddb = get_option('use_maxminddb')
-use_geoip = get_option('use_geoip')
 use_runtime_linking = get_option('use_runtime_linking')
 
 cc = meson.get_compiler('c')
@@ -46,26 +45,6 @@ if maxminddb.found()
 		deps += [dl]
 	else
 		deps += [maxminddb]
-	endif
-else
-	geoip = dependency('geoip',
-		method : 'pkg-config',
-		required : use_geoip
-	)
-	if geoip.found()
-		src += ['ipcalc-geoip.c']
-		args += ['-DUSE_GEOIP']
-		have_geo = true
-		if dl.found()
-			message('linking geoip dynamically at runtime if it is available')
-			args += [
-				'-DUSE_RUNTIME_LINKING',
-				'-DLIBPATH="' + geoip.get_pkgconfig_variable('libdir') + '"'
-			]
-			deps += [dl]
-		else
-			deps += [geoip]
-		endif
 	endif
 endif
 

@@ -161,7 +161,7 @@ Enumerate in this order:
 5. **Exit status and diagnostics**: the exit code and stderr message for
    each class of error (bad input, invalid combination, allocation
    failure, lookup failure).
-6. **Build configurations**: geo backends (`USE_MAXMIND`, `USE_GEOIP`,
+6. **Build configurations**: geo backend (`USE_MAXMIND`,
    `USE_RUNTIME_LINKING`, none) and what output each one adds.
 
 ### Phase 2 — Behavioral Contract Extraction (ipcalc)

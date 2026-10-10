@@ -147,7 +147,7 @@ applicable*; a member left stale is **DROPPED** — an error.
 - **Output fields**: the default/modern output ↔ `NAME=value` ↔ `--json`
   ↔ requirement ↔ expected-output files in `tests/` (all that print the
   field).
-- **Geo backends**: `ipcalc-maxmind.c` ↔ `ipcalc-geoip.c` ↔ stubs in
+- **Geo backend**: `ipcalc-maxmind.c` ↔ stubs in
   `ipcalc.h` ↔ `meson.build`/`meson_options.txt` ↔ `Makefile`.
 - **User-visible change**: `NEWS` entry.
 

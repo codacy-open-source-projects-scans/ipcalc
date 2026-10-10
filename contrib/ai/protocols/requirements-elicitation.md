@@ -128,7 +128,7 @@ bug report into requirements in `doc/requirements/`.
 - **Name the output formats.** A new or changed field MUST be specified
   for the default, `NAME=value`, and `--json` outputs.
 - **Flag implicit constraints**:
-  - `[IMPLICIT: geo backend]` if it depends on libmaxminddb/libGeoIP;
+  - `[IMPLICIT: geo backend]` if it depends on libmaxminddb;
     the requirement MUST state the behavior when ipcalc is built
     without a geo backend.
   - `[IMPLICIT: network]` if it depends on DNS resolution.

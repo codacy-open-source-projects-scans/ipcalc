@@ -65,7 +65,7 @@ and /128 it MUST print the `Address` line; with field-selecting options
 (e.g. `-a`, `-n`) it MUST print `NAME=value` output.
 **Strength:** MUST
 **Status:** DERIVED
-**Source:** ipcalc.c:main (`(!randomStr || single_host)`); ipcalc.1.md#Options (`--random-private`)
+**Source:** ipcalc.c:show_info_fields (`input_is_network`, `ATTR_SUMMARY_HIDE_FOR_NETWORK_ADDRESS`); ipcalc.1.md#Options (`--random-private`)
 **Acceptance:** `ipcalc -r 24` → contains `Network:`, no `Address:`; `ipcalc -r 32` → contains `Address:`; `ipcalc -r 24 -a` → `ADDRESS=…` — positive ; test: Random, RandomAddress, RandomIPv6Implicit, RandomIPv6Explicit
 
 ## Open items

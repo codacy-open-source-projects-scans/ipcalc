@@ -66,6 +66,8 @@ TestOutputFile() {
 	contents="$(cat "$2" 2>/dev/null)"
 	[ -n "$contents" ] && ok || { fail "failed to read $2"; return; }
 	TestOutput "$1" "$contents"
+	# a changed exit status breaks callers as much as changed output
+	[ $rc -eq 0 ] || fail "exit status $rc"
 }
 
 TestEqual() {

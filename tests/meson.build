@@ -115,6 +115,74 @@ if host_machine.system() == 'linux'
 		],
 		depends : fake_getnameinfo
 	)
+
+	# NAME=value output must stay usable with eval for a name from DNS
+	foreach c : [
+		['ShellEscapeHostname', '--format=shell -h 127.0.0.1'],
+		['ShellEscapeHostnameDefault', '-h 127.0.0.1'],
+	]
+		test(c[0],
+			testrunner,
+			args : [
+				'--test-success',
+				'out=$(ASAN_OPTIONS="$ASAN_OPTIONS:verify_asan_link_order=0" LD_PRELOAD=' + fake_getnameinfo.full_path() + ' ' + ipcalc.full_path() + ' ' + c[1] + ') && eval "$out" && [ "$HOSTNAME" = "$(printf \'a"b\\\\c\\td\')" ]'
+			],
+			depends : fake_getnameinfo
+		)
+	endforeach
+
+	# values-only output prints the name verbatim, as released
+	foreach c : [
+		['NoDecorateHostnameVerbatim', '--no-decorate -h 127.0.0.1'],
+		['FormatValueHostnameVerbatim', '--format=value -h 127.0.0.1'],
+	]
+		cmd = 'ASAN_OPTIONS="$ASAN_OPTIONS:verify_asan_link_order=0" LD_PRELOAD=' + fake_getnameinfo.full_path() + ' ' + ipcalc.full_path() + ' ' + c[1]
+		test(c[0],
+			testrunner,
+			args : ['--test-status', '0', cmd, '--test-output', cmd, 'a"b\\c\td'],
+			depends : fake_getnameinfo
+		)
+	endforeach
+
+	# deprecated options suggest --format on a terminal: [name, arguments, hint]
+	fake_isatty = shared_module('fake-isatty', 'fake-isatty.c')
+	foreach c : [
+		['HintJson', '-j 10.0.0.1/24', 'ipcalc: hint: -j is deprecated; use --format=json'],
+		['HintJsonFields', '-j -m 10.0.0.1/24', 'ipcalc: hint: -j is deprecated; use --format=json, which prints only the selected fields'],
+		['HintJsonEquals', '-j 10.0.0.0/8 --equals=10.0.0.0/8', 'ipcalc: hint: -j is deprecated; use -s to print no result'],
+		['HintNoDecorateFields', '--no-decorate -m 10.0.0.1/24', 'ipcalc: hint: --no-decorate is deprecated; use --format=value'],
+		['HintNoDecorateSplit', '--no-decorate -S 26 10.0.0.0/24', 'ipcalc: hint: --no-decorate is deprecated; use --format=value'],
+		['HintNoDecorateSummary', '--no-decorate 10.0.0.1/24', 'ipcalc: hint: --no-decorate is deprecated; use --format=human'],
+		['NoHintFormat', '--format=json -m 10.0.0.1/24', ''],
+		['NoHintFields', '-m -n 10.0.0.1/24', ''],
+		['NoHintFormatValueSplit', '--format=value -S 26 10.0.0.0/24', ''],
+		['NoHintSilent', '-s -j 10.0.0.1/24', ''],
+	]
+		cmd = 'ASAN_OPTIONS="$ASAN_OPTIONS:verify_asan_link_order=0" LD_PRELOAD=' + fake_isatty.full_path() + ' ' + ipcalc.full_path() + ' ' + c[1] + ' >/dev/null'
+		test(c[0],
+			testrunner,
+			args : ['--test-status', '0', cmd, '--test-output', cmd, c[2]],
+			depends : fake_isatty
+		)
+	endforeach
+
+	# -h rejects a network before looking up its name
+	fail_getnameinfo = shared_module('fail-getnameinfo', 'fail-getnameinfo.c')
+	cmd = 'ASAN_OPTIONS="$ASAN_OPTIONS:verify_asan_link_order=0" LD_PRELOAD=' + fail_getnameinfo.full_path() + ' ' + ipcalc.full_path() + ' -h 127.0.0.1/8'
+	test('HostnameNetworkNoLookup',
+		testrunner,
+		args : ['--test-status', '1', cmd, '--test-output', cmd,
+			'ipcalc: -h requires a single address, not a network: 127.0.0.1/8'],
+		depends : fail_getnameinfo
+	)
+
+	# --all-info does not look up the hostname
+	test('AllInfoNoLookup',
+		testrunner,
+		args : ['--test-success',
+			'out=$(ASAN_OPTIONS="$ASAN_OPTIONS:verify_asan_link_order=0" LD_PRELOAD=' + fake_getnameinfo.full_path() + ' ' + ipcalc.full_path() + ' -j --all-info 127.0.0.1) && ! echo "$out" | grep -q HOSTNAME'],
+		depends : fake_getnameinfo
+	)
 endif
 test('IPIPv6Localhost',
 	testrunner,
@@ -2154,6 +2222,7 @@ test('DeaggregateSplitIPv4',
 # Debian script is only in the git tree, not in release tarballs. The tests
 # need perl and fail when it is missing (REQ-GEN-TEST-007).
 if import('fs').exists('debian-ipcalc/ipcalc')
+	debian_split_hosts = find_program('ipcalc-debian-split-hosts.sh')
 	foreach c : [
 		['192.168.0.0/24', '10,20,30'],
 		['192.168.0.0/24', '1,2,62,63'],
@@ -2169,7 +2238,7 @@ if import('fs').exists('debian-ipcalc/ipcalc')
 		['10.20.30.0/23', '100,100,50,3,3,1'],
 	]
 		test('DebianSplitHosts-' + c[0].replace('/', '-') + '-' + c[1],
-			find_program('ipcalc-debian-split-hosts.sh'),
+			debian_split_hosts,
 			args : c,
 			env : ['IPCALC=' + ipcalc.full_path(),
 			       'DEBIAN_IPCALC=' + meson.current_source_dir() / 'debian-ipcalc' / 'ipcalc']
@@ -2250,7 +2319,7 @@ foreach c : [
 	['CidrNoDecorateIPv6', '--cidr --no-decorate 2001:db8::1/64', '2001:db8::/64'],
 	['CidrSingleHost', '--cidr 192.168.1.1', 'CIDR=192.168.1.1/32'],
 	['CidrSingleHostIPv6', '--cidr ::1', 'CIDR=::1/128'],
-	['CidrFieldOrder', '-n --cidr -p 10.1.2.3/8', 'PREFIX=8\nNETWORK=10.0.0.0\nCIDR=10.0.0.0/8'],
+	['CidrFieldOrder', '-n --cidr -p 10.1.2.3/8', 'NETWORK=10.0.0.0\nPREFIX=8\nCIDR=10.0.0.0/8'],
 ]
 	cmd = ipcalc.full_path() + ' ' + c[1]
 	test(c[0], testrunner,
@@ -2258,3 +2327,153 @@ foreach c : [
 endforeach
 test('RandomCidr', testrunner,
 	args : ['--test-success', ipcalc.full_path() + ' -r 24 --cidr --no-decorate'])
+
+# --wildcard: [name, arguments, expected output]
+foreach c : [
+	['WildcardIPv4', '--wildcard 192.168.123.7/24', 'WILDCARD=0.0.0.255'],
+	['WildcardSingleHost', '--wildcard 192.168.1.1', 'WILDCARD=0.0.0.0'],
+	['WildcardPrefix0', '--wildcard 0.0.0.0/0', 'WILDCARD=255.255.255.255'],
+	['WildcardPrefix1', '--wildcard 10.0.0.1/1', 'WILDCARD=127.255.255.255'],
+	['WildcardPrefix8', '--wildcard 10.0.0.1/8', 'WILDCARD=0.255.255.255'],
+	['WildcardPrefix12', '--wildcard 172.16.5.4/12', 'WILDCARD=0.15.255.255'],
+	['WildcardPrefix16', '--wildcard 172.16.5.4/16', 'WILDCARD=0.0.255.255'],
+	['WildcardPrefix25', '--wildcard 192.168.1.130/25', 'WILDCARD=0.0.0.127'],
+	['WildcardPrefix27', '--wildcard 192.168.1.130/27', 'WILDCARD=0.0.0.31'],
+	['WildcardPrefix31', '--wildcard 192.168.1.130/31', 'WILDCARD=0.0.0.1'],
+	['WildcardNetmask', '--wildcard 10.1.2.3/255.255.255.252', 'WILDCARD=0.0.0.3'],
+	['WildcardNoDecorate', '--wildcard --no-decorate 172.16.5.4/12', '0.15.255.255'],
+	['WildcardIPv6', '--wildcard 2001:db8::1/64', ''],
+	['WildcardPrefix0IPv6', '--wildcard ::/0', ''],
+	['WildcardFieldOrder', '--wildcard -m -n 10.1.2.3/255.255.240.0', 'NETWORK=10.1.0.0\nNETMASK=255.255.240.0\nWILDCARD=0.0.15.255'],
+]
+	cmd = ipcalc.full_path() + ' ' + c[1]
+	test(c[0], testrunner,
+		args : ['--test-status', '0', cmd, '--test-output', cmd, c[2]])
+endforeach
+test('InfoWildcard', testrunner,
+	args : ['--test-outfile', ipcalc.full_path() + ' -i --wildcard 192.168.2.7/24',
+		files('info-wildcard-192.168.2.7-24')])
+test('JsonWildcard', testrunner,
+	args : ['--test-outfile', ipcalc.full_path() + ' -j --wildcard 192.168.2.7/24',
+		files('json-wildcard-192.168.2.7-24')])
+test('InfoWildcardIPv6', testrunner,
+	args : ['--test-outfile', ipcalc.full_path() + ' -i --wildcard 2001:db8::/32',
+		files('info-wildcard-2001:db8::-32')])
+test('RandomWildcard', testrunner,
+	args : ['--test-success', ipcalc.full_path() + ' -r 24 --wildcard --no-decorate'])
+
+# one field order for the summary and NAME=value output
+foreach c : [
+	['FieldOrderNetworkNetmask', '-m -n 10.1.2.3/8', 'NETWORK=10.0.0.0\nNETMASK=255.0.0.0'],
+	['AddressAndLookupHost', '-a -o localhost -4', 'ADDRESS=127.0.0.1'],
+	['HostnameHostPrefix', '-h 127.0.0.1/32', 'HOSTNAME=localhost'],
+]
+	cmd = ipcalc.full_path() + ' ' + c[1]
+	test(c[0], testrunner,
+		args : ['--test-status', '0', cmd, '--test-output', cmd, c[2]])
+endforeach
+test('InfoReverseDNS', testrunner,
+	args : ['--test-outfile', ipcalc.full_path() + ' -i --reverse-dns 192.168.2.7/24',
+		files('info-reverse-dns-192.168.2.7-24')])
+test('JsonReverseDNS', testrunner,
+	args : ['--test-outfile', ipcalc.full_path() + ' -j --reverse-dns 192.168.2.7/24',
+		files('json-reverse-dns-192.168.2.7-24')])
+
+# -h rejects a network: [name, arguments, expected output]
+foreach c : [
+	['HostnameNetwork', '-h 127.0.0.1/8', 'ipcalc: -h requires a single address, not a network: 127.0.0.1/8'],
+	['HostnameNetworkJson', '-j -h 127.0.0.1/8', 'ipcalc: -h requires a single address, not a network: 127.0.0.1/8'],
+	['HostnameNetworkIPv6', '-h ::1/64', 'ipcalc: -h requires a single address, not a network: ::1/64'],
+	['HostnameNetworkSilent', '-s -h 127.0.0.1/8', ''],
+	['HostnameNetworkFormatJson', '--format=json -h 127.0.0.1/8', 'ipcalc: -h requires a single address, not a network: 127.0.0.1/8'],
+]
+	cmd = ipcalc.full_path() + ' ' + c[1]
+	test(c[0], testrunner,
+		args : ['--test-status', '1', cmd, '--test-output', cmd, c[2]])
+endforeach
+
+# -i stays within 15 lines of at most 80 columns: [name, input]
+foreach c : [
+	['InfoSummarySizeIPv6', 'ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/1'],
+	['InfoSummarySizeIPv4', '255.255.255.255/1'],
+]
+	test(c[0], testrunner,
+		args : ['--test-success',
+			'out=$(' + ipcalc.full_path() + ' -i ' + c[1] + ') && [ "$(echo "$out" | wc -l)" -le 15 ] && ! echo "$out" | expand | grep -q \'.\{81\}\''])
+endforeach
+
+# --all-info has every key the field-selecting options add, except
+# -h and -o, which need DNS, and -g, which needs a geo database
+all_fields = ' -j -a -b -m -n -p --cidr --wildcard --reverse-dns --addrspace --minaddr --maxaddr --addresses '
+foreach c : [
+	['AllInfoJsonKeysIPv4', '192.168.2.7/24'],
+	['AllInfoJsonKeysIPv6', 'fe80::21b:21ff:fe3a:5c7d/64'],
+]
+	test(c[0], testrunner,
+		args : ['--test-success',
+			'all=$(' + ipcalc.full_path() + ' -j --all-info ' + c[1] + ' | grep -o \'"[A-Z0-9]*":\') && ' +
+			'sel=$(' + ipcalc.full_path() + all_fields + c[1] + ' | grep -o \'"[A-Z0-9]*":\') && ' +
+			'for k in $sel; do echo "$all" | grep -qxF "$k" || { echo "missing $k"; exit 1; }; done'])
+endforeach
+
+# --format selects the output format: [name, arguments, expected output]
+foreach c : [
+	['FormatJsonFields', '--format=json -m -n 192.168.2.7/24', '{\n  "NETWORK":"192.168.2.0",\n  "NETMASK":"255.255.255.0"\n}'],
+	['FormatHumanFields', '--format=human -m -n 192.168.2.7/24', 'Network:\t192.168.2.0/24\nNetmask:\t255.255.255.0 = 24'],
+	['FormatJsonReverseDNS', '--format=json --reverse-dns 2001:db8::/31', '{\n  "REVERSEDNS":[\n    "8.b.d.0.1.0.0.2.ip6.arpa.",\n    "9.b.d.0.1.0.0.2.ip6.arpa."]\n}'],
+	['FormatJsonHostname', '--format=json -h 127.0.0.1', '{\n  "HOSTNAME":"localhost"\n}'],
+	['FormatJsonLookupHost', '--format=json -4 -o localhost', '{\n  "ADDRESS":"127.0.0.1"\n}'],
+	['FormatJsonWithJ', '-j --format=json -n 10.1.2.3/8', '{\n  "NETWORK":"10.0.0.0"\n}'],
+	['FormatValueWithNoDecorate', '--no-decorate --format=value -n 10.1.2.3/8', '10.0.0.0'],
+	['FormatHumanEquals', '--format=human 192.168.7.15/24 --equals=192.168.7.5/24', 'The networks are equal'],
+	['FormatCheck', '-c --format=shell 127.0.0.1', ''],
+]
+	cmd = ipcalc.full_path() + ' ' + c[1]
+	test(c[0], testrunner,
+		args : ['--test-status', '0', cmd, '--test-output', cmd, c[2]])
+endforeach
+
+# --format with the output of existing tests: [name, arguments, file]
+foreach c : [
+	['FormatHumanSummary', '--format=human 192.168.2.0/24', 'standard-192.168.2.0-24'],
+	['FormatJsonAllInfo', '--format=json --all-info 192.168.2.7/24', 'json-all-info-192.168.2.7-24'],
+	['FormatShellSummary', '--format=shell 192.168.2.7/24', 'shell-192.168.2.7-24'],
+	['FormatJsonInfoLookupHost', '--format=json -i -4 -o localhost', 'hostname-localhost-ipv4-json'],
+	['FormatValueSplit', '--format=value -S 26 192.168.5.45/24', 'nsplit-192.168.5.45-24-26'],
+	['FormatJsonSplit', '--format=json -S 26 192.168.5.45/24', 'json-split-192.168.5.45-24-26'],
+	['FormatHumanSplit', '--format=human -S 26 192.168.5.45/24', 'split-192.168.5.45-24-26'],
+	['FormatValueDeaggregate', '--format=value -d 192.168.2.7-192.168.2.13', 'deaggregate-192.168.2.7-192.168.2.13'],
+]
+	test(c[0], testrunner,
+		args : ['--test-outfile', ipcalc.full_path() + ' ' + c[1], files(c[2])])
+endforeach
+
+# --format prints what the legacy options print: [name, arguments, legacy arguments]
+foreach c : [
+	['FormatShellFields', '--format=shell -m -n 10.1.2.3/8', '-m -n 10.1.2.3/8'],
+	['FormatValueFields', '--format=value -m -n 10.1.2.3/8', '--no-decorate -m -n 10.1.2.3/8'],
+]
+	test(c[0], testrunner,
+		args : ['--test-equal', ipcalc.full_path() + ' ' + c[1], ipcalc.full_path() + ' ' + c[2]])
+endforeach
+
+# --format rejects ambiguous combinations: [name, status, arguments, expected output]
+foreach c : [
+	['FormatUnknown', '1', '--format=xml 10.0.0.1', 'ipcalc: unknown output format: xml; use human, shell, json or value'],
+	['FormatUnknownSilent', '1', '-s --format=xml 10.0.0.1', ''],
+	['FormatTwice', '1', '--format=json --format=shell 10.0.0.1', 'ipcalc: conflicting output formats: --format=json and --format=shell'],
+	['FormatConflictJson', '1', '-j --format=shell 10.0.0.1', 'ipcalc: conflicting output formats: -j and --format=shell'],
+	['FormatConflictNoDecorate', '1', '--no-decorate --format=json -m 10.0.0.1', 'ipcalc: conflicting output formats: --no-decorate and --format=json'],
+	['FormatInfoWithField', '1', '--format=json -i -m 10.0.0.1', 'ipcalc: -i and --all-info cannot be combined with options that select fields'],
+	['FormatAllInfoWithField', '1', '--format=human --all-info -n 10.0.0.1/24', 'ipcalc: -i and --all-info cannot be combined with options that select fields'],
+	['FormatValueSummary', '1', '--format=value 10.0.0.1/24', 'ipcalc: --format=value needs options that select fields; use --format=shell or --format=json for the summary'],
+	['FormatShellSplit', '1', '--format=shell -S 26 10.0.0.0/24', 'ipcalc: --format=shell is not supported with --split, --split-hosts or --deaggregate; use --format=value'],
+	['FormatShellDeaggregate', '1', '--format=shell -d 10.0.0.1-10.0.0.9', 'ipcalc: --format=shell is not supported with --split, --split-hosts or --deaggregate; use --format=value'],
+	['FormatJsonEquals', '2', '--format=json 10.0.0.0/8 --equals=10.0.0.0/8', 'ipcalc: --format=json is not supported with --equals, --subnet-of or --overlaps'],
+	['FormatValueSubnetOf', '2', '--format=value 10.0.0.0/8 --subnet-of=10.0.0.0/7', 'ipcalc: --format=value is not supported with --equals, --subnet-of or --overlaps'],
+	['FormatShellOverlaps', '2', '--format=shell 10.0.0.0/8 --overlaps=10.0.0.0/7', 'ipcalc: --format=shell is not supported with --equals, --subnet-of or --overlaps'],
+]
+	cmd = ipcalc.full_path() + ' ' + c[2]
+	test(c[0], testrunner,
+		args : ['--test-status', c[1], cmd, '--test-output', cmd, c[3]])
+endforeach

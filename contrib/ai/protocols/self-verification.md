@@ -134,14 +134,14 @@ report exactly what was and was not verified:
 2. `meson test -C build <relevant-test>` for the tests covering the
    change, then the full suite `ninja -C build test`.
 3. The legacy Makefile build without geo backends:
-   `make USE_MAXMIND=no USE_GEOIP=no USE_RUNTIME_LINKING=no` (then
+   `make USE_MAXMIND=no USE_RUNTIME_LINKING=no` (then
    `make clean` or remove the `ipcalc` binary it leaves behind).
 4. If the change touches memory handling or arithmetic on addresses,
    an ASan/UBSan build: `meson setup build-asan -Db_sanitize=address,undefined`
    and run the suite there.
-5. If the change touches `ipcalc-maxmind.c`, `ipcalc-geoip.c`, or the
-   geo stubs in `ipcalc.h`: build with each geo configuration CI uses
-   (`-Duse_maxminddb`, `-Duse_geoip`, `-Duse_runtime_linking`, none), or
+5. If the change touches `ipcalc-maxmind.c` or the geo stubs in
+   `ipcalc.h`: build with each geo configuration CI uses
+   (`-Duse_maxminddb`, `-Duse_runtime_linking`, none), or
    report which configurations were not built.
 
 ### Reporting (Rule 3 — Coverage Confirmation)

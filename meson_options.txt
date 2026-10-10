@@ -1,7 +1,7 @@
 option('use_geoip',
 	type : 'feature',
 	value : 'auto',
-	description : 'Use the GeoIP library to retrieve geo-information'
+	description : 'Ignored; libGeoIP is no longer supported'
 )
 option('use_maxminddb',
 	type : 'feature',
@@ -11,5 +11,5 @@ option('use_maxminddb',
 option('use_runtime_linking',
 	type : 'feature',
 	value : 'auto',
-	description : 'Load the GeoIP or maxminddb library at runtime if available'
+	description : 'Load the maxminddb library at runtime if available'
 )

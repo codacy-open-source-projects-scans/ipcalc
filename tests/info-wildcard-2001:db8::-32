@@ -1,0 +1,8 @@
+Full Network:	2001:0db8:0000:0000:0000:0000:0000:0000/32
+Network:	2001:db8::/32
+Netmask:	ffff:ffff:: = 32
+
+Address space:	Documentation
+HostMin:	2001:db8::
+HostMax:	2001:db8:ffff:ffff:ffff:ffff:ffff:ffff
+Hosts/Net:	2^(96) = 79228162514264337593543950336

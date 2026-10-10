@@ -166,7 +166,7 @@ Canonical ipcalc hypotheses to consider first:
 - A field printed with a helper that ignores `--no-decorate` or
   `--json`, or bypasses the helpers entirely.
 - Code compiled only in one geo configuration (`USE_MAXMIND`,
-  `USE_GEOIP`, `USE_RUNTIME_LINKING`).
+  `USE_RUNTIME_LINKING`).
 
 ### Phase 5 — Remediation (ipcalc)
 

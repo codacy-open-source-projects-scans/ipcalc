@@ -35,7 +35,7 @@ written.
 | `split.md` | `REQ-SPLIT-` | `-S/--split`, `--split-hosts` | `netsplit.c` (`show_split_networks()`), `ipcalc.c` (`main()`, `parse_split_req()`, `parse_split_hosts()`, `str_to_prefix()`) |
 | `deaggregate.md` | `REQ-DEAGG-` | `-d/--deaggregate` | `deaggregate.c` |
 | `random.md` | `REQ-RANDOM-` | `-r/--random-private` network generation | `ipcalc.c` (`generate_ip_network()`) |
-| `geo.md` | `REQ-GEO-` | Geo-IP output and behavior per backend, including no backend | `ipcalc-maxmind.c`, `ipcalc-geoip.c`, `ipcalc.h` |
+| `geo.md` | `REQ-GEO-` | Geo-IP output and behavior per backend, including no backend | `ipcalc-maxmind.c`, `ipcalc.h` |
 
 ## ID scheme
 
@@ -129,3 +129,5 @@ meaning not covered, add the term here first.
 | decorated output | The default human-readable output, colored only when stdout is a TTY and `NO_COLOR` is unset. |
 | `NAME=value` output | The shell-variable style output produced when specific info options (e.g. `-n`, `-b`) are given. |
 | invalid input | Not a standalone term: name the input class (malformed address, prefix out of range for the family, conflicting options, …) and the exit status. |
+| release | A version of ipcalc with a git tag (`1.0.0` or later). Behavior present only in unreleased commits is not a release's behavior. |
+| information item | A value ipcalc prints — an address, mask, prefix, count, name, or list — as opposed to its presentation: label, order, alignment, separators, blank lines, and color. Two outputs carry the same information item when the value can be read from both, e.g. the prefix in `Netmask: 255.255.255.0 = 24` and in `Network: 192.168.2.0/24`. |

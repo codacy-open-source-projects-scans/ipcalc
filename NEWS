@@ -1,6 +1,30 @@
 * Version 1.1.1 (unreleased)
 - Added the --cidr option, which prints the network in CIDR notation
   (e.g., 192.168.123.0/24); the JSON output has the new CIDR key
+- Added the --wildcard option, which prints the IPv4 wildcard (inverse)
+  mask (e.g., 0.0.0.255 for a /24); --all-info shows it too, and the JSON
+  output then has the new WILDCARD key
+- Values selected with specific options (e.g., -a, -n, -m) are printed
+  in the order of the summary output; -n is now printed before -m
+- The summary and JSON output include the reverse DNS when --reverse-dns
+  is given
+- The -h option requires a single address and fails for a network
+- Added the --format option, which selects the output format: human,
+  shell (VAR=VALUE), json or value; with it the specific info options
+  select exactly the fields printed in every format, e.g.,
+  "ipcalc --format=json -n -m 192.168.1.5/24" prints only NETWORK and
+  NETMASK. Without --format the output is unchanged
+- The -j and --no-decorate options are deprecated in favor of
+  --format=json, --format=value and --format=human; they keep working
+  unchanged, and print a hint naming the replacement when stderr is a
+  terminal. The manual page documents them only as deprecated options
+- VAR=VALUE output quotes and escapes values that contain characters
+  special to the shell, such as a host name from DNS, so that it is
+  always usable with eval
+- Removed support for libGeoIP, whose databases are no longer published;
+  geographic information requires libmaxminddb; the use_geoip meson
+  option is accepted but ignored, and the USE_GEOIP Makefile variable
+  has no effect
 
 
 * Version 1.1.0 (released 2026-10-04)

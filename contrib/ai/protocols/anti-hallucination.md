@@ -100,8 +100,8 @@ user-visible bug.
   (`./build/ipcalc ...`) or reading the matching expected-output file
   in `tests/`. Output format details (field names, JSON keys,
   ordering) MUST come from evidence, not from expectation.
-- Do not invent libmaxminddb or libGeoIP API signatures; read
-  `ipcalc-maxmind.c` / `ipcalc-geoip.c` for how the project calls them.
+- Do not invent libmaxminddb API signatures; read `ipcalc-maxmind.c`
+  for how the project calls them.
 
 ### Rule 2 (Refusal to Fabricate) — ipcalc application
 

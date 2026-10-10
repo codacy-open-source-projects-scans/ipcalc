@@ -17,25 +17,24 @@ every other document.
 ### REQ-GEN-BUILD-001
 **Requirement:** The source MUST compile without warnings under
 `-O2 -g -Werror` in every configuration CI builds: no geo backend;
-libGeoIP linked; libGeoIP loaded at run time; libmaxminddb linked;
-libmaxminddb loaded at run time — with both meson and the legacy
+libmaxminddb linked; libmaxminddb loaded at run time — with both meson and the legacy
 Makefile — and with
 `-Db_sanitize=address,undefined -Dc_args="-fno-sanitize-recover=undefined" -Dwerror=true`.
 **Strength:** MUST
 **Status:** DERIVED
-**Source:** .gitlab-ci.yml (jobs fedora.nogeo, fedora.geoip, fedora.dyn_geoip, fedora.maxmind, fedora.dyn_maxmind, fedora.sanitizers); AGENTS.md#Build and test
+**Source:** .gitlab-ci.yml (jobs fedora.nogeo, fedora.maxmind, fedora.dyn_maxmind, fedora.sanitizers); AGENTS.md#Build and test
 **Acceptance:** all CI jobs pass — positive ; test: CI
 **Links:** REQ-GEO-BUILD-001
 
 ### REQ-GEN-BUILD-002
 **Requirement:** The legacy Makefile MUST build ipcalc by compiling every
-source file, so each geo backend source MUST compile to nothing when its
-`USE_*` macro is undefined, and the Makefile MUST take the version
+source file, so the geo backend source MUST compile to nothing when
+`USE_MAXMIND` is undefined, and the Makefile MUST take the version
 string from `meson.build`.
 **Strength:** MUST
 **Status:** DERIVED
-**Source:** Makefile (`ipcalc:` rule lists all `.c` files; `VERSION=$(shell cat meson.build|…)`); ipcalc-maxmind.c (`#ifdef USE_MAXMIND`), ipcalc-geoip.c (`#ifdef USE_GEOIP`); AGENTS.md#Build and test
-**Acceptance:** `make USE_MAXMIND=no USE_GEOIP=no USE_RUNTIME_LINKING=no && ./ipcalc -v` → `ipcalc <meson version>` — positive ; test: CI (`make` step of every fedora.* job)
+**Source:** Makefile (`ipcalc:` rule lists all `.c` files; `VERSION=$(shell cat meson.build|…)`); ipcalc-maxmind.c (`#ifdef USE_MAXMIND`); AGENTS.md#Build and test
+**Acceptance:** `make USE_MAXMIND=no USE_RUNTIME_LINKING=no && ./ipcalc -v` → `ipcalc <meson version>` — positive ; test: CI (`make` step of every fedora.* job)
 
 ### REQ-GEN-TEST-001
 **Requirement:** Every test MUST be registered in `tests/meson.build` and
@@ -44,11 +43,13 @@ run through `tests/ipcalc-testrunner.sh` in one of its modes
 `--test-outfile`, `--test-equal`); `--test-outfile` expected-output files MUST live in
 `tests/`, be named after the command's arguments, and contain the
 combined stdout and stderr of the command run with stdout not a
-terminal.
+terminal, and a `--test-outfile` test MUST fail when the command exits
+with a nonzero status.
 **Strength:** MUST
 **Status:** DERIVED
-**Source:** tests/meson.build; tests/ipcalc-testrunner.sh (`TestOutput` captures `2>&1`); AGENTS.md#Tests
-**Acceptance:** `meson test -C build --list` lists every test; `ninja -C build test` passes — positive ; test: all
+**Source:** tests/meson.build; tests/ipcalc-testrunner.sh (`TestOutput` captures `2>&1`, `TestOutputFile` checks the exit status); AGENTS.md#Tests
+**Acceptance:** `meson test -C build --list` lists every test; `ninja -C build test` passes — positive ; `ipcalc-testrunner.sh --test-outfile 'echo hi; exit 1' FILE` with FILE containing `hi` → fails — negative ; test: all
+**Links:** REQ-CLI-COMPAT-008
 
 ### REQ-GEN-TEST-002
 **Requirement:** Each requirement's **Acceptance** criteria MUST be
@@ -104,7 +105,7 @@ backend explicitly rather than rely on auto-detection, so that sanitizer
 coverage cannot shrink silently when a dependency changes.
 **Strength:** MUST
 **Status:** DERIVED
-**Source:** .gitlab-ci.yml (fedora.sanitizers: `-Duse_maxminddb=enabled -Duse_geoip=disabled -Duse_runtime_linking=enabled`)
+**Source:** .gitlab-ci.yml (fedora.sanitizers: `-Duse_maxminddb=enabled -Duse_runtime_linking=enabled`)
 **Acceptance:** in fedora.sanitizers, `meson test -C build --list`
 contains every test of fedora.dyn_maxmind's configuration, including
 JsonEscapeHostname — positive ; with libmaxminddb uninstalled, the job's

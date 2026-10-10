@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 1997-2015 Red Hat, Inc. All rights reserved.
+ * Copyright (c) 2026 Nikos Mavrogiannopoulos
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -535,7 +536,7 @@ char *ipv6_prefix_to_hosts(char *hosts, unsigned hosts_size, unsigned prefix)
 int get_ipv4_info(const char *ipStr, int prefix, ip_info_st * info,
 		  unsigned flags)
 {
-	struct in_addr ip, netmask, network, broadcast, minhost, maxhost;
+	struct in_addr ip, netmask, wildcard, network, broadcast, minhost, maxhost;
 	char namebuf[INET_ADDRSTRLEN + 1];
 	char errBuf[250];
 
@@ -603,6 +604,14 @@ int get_ipv4_info(const char *ipStr, int prefix, ip_info_st * info,
 	info->netmask = safe_strdup(namebuf);
 	info->prefix = prefix;
 
+	wildcard.s_addr = ~netmask.s_addr;
+	if (inet_ntop(AF_INET, &wildcard, namebuf, INET_ADDRSTRLEN) == NULL) {
+		fprintf(stderr, "inet_ntop failure at line %d\n",
+			__LINE__);
+		exit(exit_failure);
+	}
+	info->wildcard = safe_strdup(namebuf);
+
 	broadcast = calc_broadcast(ip, prefix);
 
 	memset(namebuf, '\0', sizeof(namebuf));
@@ -663,13 +672,14 @@ int get_ipv4_info(const char *ipStr, int prefix, ip_info_st * info,
 
 	ipv4_prefix_to_hosts(info->hosts, sizeof(info->hosts), prefix);
 
-#if defined(USE_GEOIP) || defined(USE_MAXMIND)
+#ifdef USE_MAXMIND
 	if (flags & FLAG_GET_GEOIP) {
 		geo_ip_lookup(ipStr, &info->geoip_country, &info->geoip_ccode, &info->geoip_city, &info->geoip_coord);
 	}
 #endif
 
-	if (flags & FLAG_RESOLVE_HOST) {
+	/* show_info_fields() rejects a network without the lookup */
+	if ((flags & FLAG_RESOLVE_HOST) && prefix == 32) {
 		info->hostname = get_hostname(AF_INET, &ip);
 		if (info->hostname == NULL) {
 			if (!beSilent) {
@@ -936,13 +946,14 @@ int get_ipv6_info(const char *ipStr, int prefix, ip_info_st * info,
 
 	ipv6_prefix_to_hosts(info->hosts, sizeof(info->hosts), prefix);
 
-#if defined(USE_GEOIP) || defined(USE_MAXMIND)
+#ifdef USE_MAXMIND
 	if (flags & FLAG_GET_GEOIP) {
 		geo_ip_lookup(ipStr, &info->geoip_country, &info->geoip_ccode, &info->geoip_city, &info->geoip_coord);
 	}
 #endif
 
-	if (flags & FLAG_RESOLVE_HOST) {
+	/* show_info_fields() rejects a network without the lookup */
+	if ((flags & FLAG_RESOLVE_HOST) && prefix == 128) {
 		info->hostname = get_hostname(AF_INET6, &ip6);
 		if (info->hostname == NULL) {
 			if (!beSilent) {
@@ -1152,10 +1163,12 @@ static int parse_split_hosts(unsigned flags, const char *str,
 #define OPT_SUBNET_OF 13
 #define OPT_OVERLAPS 14
 #define OPT_CIDR 15
+#define OPT_WILDCARD 16
+#define OPT_FORMAT 17
 
 #define IS_COMPARE_OPT(c) ((c) == OPT_EQUALS || (c) == OPT_SUBNET_OF || (c) == OPT_OVERLAPS)
 
-#if defined(USE_GEOIP) || defined(USE_MAXMIND)
+#ifdef USE_MAXMIND
 # define GEO_SHORT_OPTION "g"
 #else
 # define GEO_SHORT_OPTION ""
@@ -1179,12 +1192,13 @@ static const struct option long_options[] = {
 	{"hostname", 0, 0, 'h'},
 	{"lookup-host", 1, 0, 'o'},
 	{"reverse-dns", 0, 0, OPT_REVERSE},
-#if defined(USE_GEOIP) || defined(USE_MAXMIND)
+#ifdef USE_MAXMIND
 	{"geoinfo", 0, 0, 'g'},
 #endif
 	{"netmask", 0, 0, 'm'},
 	{"network", 0, 0, 'n'},
 	{"cidr", 0, 0, OPT_CIDR},
+	{"wildcard", 0, 0, OPT_WILDCARD},
 	{"prefix", 0, 0, 'p'},
 	{"class-prefix", 0, 0, OPT_CLASS_PREFIX},
 	{"minaddr", 0, 0, OPT_MINADDR},
@@ -1194,11 +1208,50 @@ static const struct option long_options[] = {
 	{"silent", 0, 0, 's'},
 	{"no-decorate", 0, 0, OPT_NO_DECORATE},
 	{"json", 0, 0, 'j'},
+	{"format", 1, 0, OPT_FORMAT},
 	{"version", 0, 0, 'v'},
 	{"help", 0, 0, OPT_HELP},
 	{"usage", 0, 0, OPT_USAGE},
 	{NULL, 0, 0, 0}
 };
+
+/* Options that select a field to print */
+static const struct {
+	int option;
+	enum ipcalc_flag field_flag;
+} field_selecting_options[] = {
+	{'a', FLAG_SHOW_ADDRESS},
+	{'o', FLAG_RESOLVE_IP},
+	{'b', FLAG_SHOW_BROADCAST},
+	{'h', FLAG_RESOLVE_HOST},
+	{'m', FLAG_SHOW_NETMASK},
+	{'n', FLAG_SHOW_NETWORK},
+	{'p', FLAG_SHOW_PREFIX},
+#ifdef USE_MAXMIND
+	{'g', FLAG_SHOW_GEOIP},
+#endif
+	{OPT_REVERSE, FLAG_SHOW_REVERSE},
+	{OPT_CIDR, FLAG_SHOW_CIDR},
+	{OPT_WILDCARD, FLAG_SHOW_WILDCARD},
+	{OPT_MINADDR, FLAG_SHOW_MINADDR},
+	{OPT_MAXADDR, FLAG_SHOW_MAXADDR},
+	{OPT_ADDRESSES, FLAG_SHOW_ADDRESSES},
+	{OPT_ADDRSPACE, FLAG_SHOW_ADDRSPACE},
+};
+
+/* 0 for an option that selects no field */
+static unsigned field_flag_of_option(int option)
+{
+	const unsigned n = sizeof(field_selecting_options) /
+			   sizeof(field_selecting_options[0]);
+	unsigned i;
+
+	for (i = 0; i < n; i++) {
+		if (field_selecting_options[i].option == option)
+			return field_selecting_options[i].field_flag;
+	}
+	return 0;
+}
 
 static
 void usage(unsigned verbose)
@@ -1228,6 +1281,7 @@ void usage(unsigned verbose)
 		fprintf(stderr, "  -a, --address                   Display IP address\n");
 		fprintf(stderr, "  -b, --broadcast                 Display calculated broadcast address\n");
 		fprintf(stderr, "  -m, --netmask                   Display netmask for IP\n");
+		fprintf(stderr, "      --wildcard                  Display wildcard (inverse) mask for IP\n");
 		fprintf(stderr, "  -n, --network                   Display network address\n");
 		fprintf(stderr, "      --cidr                      Display network address and prefix in\n");
 		fprintf(stderr, "                                  CIDR notation\n");
@@ -1240,18 +1294,21 @@ void usage(unsigned verbose)
 		fprintf(stderr, "                                  resides on\n");
 		fprintf(stderr, "  -h, --hostname                  Show hostname determined via DNS\n");
 		fprintf(stderr, "  -o, --lookup-host=STRING        Show IP as determined via DNS\n");
-#if defined(USE_GEOIP) || defined(USE_MAXMIND)
+#ifdef USE_MAXMIND
 		fprintf(stderr, "  -g, --geoinfo                   Show Geographic information about the\n");
 		fprintf(stderr, "                                  provided IP\n");
 #endif
+		fprintf(stderr, "\n");
+		fprintf(stderr, "Output format:\n");
+		fprintf(stderr, "      --format=FORMAT             Print the output as human (default for the\n");
+		fprintf(stderr, "                                  summary), shell (NAME=value, default for\n");
+		fprintf(stderr, "                                  specific info options), json, or value\n");
 		fprintf(stderr, "\n");
 		fprintf(stderr, "Other options:\n");
 		fprintf(stderr, "  -4, --ipv4                      Explicitly specify the IPv4 address family\n");
 		fprintf(stderr, "  -6, --ipv6                      Explicitly specify the IPv6 address family\n");
 		fprintf(stderr, "      --class-prefix              When specified the default prefix will be determined\n");
 		fprintf(stderr, "                                  by the IPv4 address class\n");
-		fprintf(stderr, "      --no-decorate               Print only the requested information\n");
-		fprintf(stderr, "  -j, --json                      JSON output\n");
 		fprintf(stderr, "  -s, --silent                    Don't ever display error messages, nor\n");
 		fprintf(stderr, "                                  the result of a comparison\n");
 		fprintf(stderr, "  -v, --version                   Display program version\n");
@@ -1261,14 +1318,15 @@ void usage(unsigned verbose)
 		fprintf(stderr, "Usage: ipcalc [-46sv?] [-c|--check] [--equals=NET] [--subnet-of=NET]\n");
 		fprintf(stderr, "        [--overlaps=NET] [-r|--random-private=STRING] [-i|--info]\n");
 		fprintf(stderr, "        [--all-info] [-4|--ipv4] [-6|--ipv6] [-a|--address] [-b|--broadcast]\n");
-#if defined(USE_GEOIP) || defined(USE_MAXMIND)
+#ifdef USE_MAXMIND
 		fprintf(stderr, "        [-h|--hostname] [-o|--lookup-host=STRING] [-g|--geoinfo]\n");
 #else
 		fprintf(stderr, "        [-h|--hostname] [-o|--lookup-host=STRING]\n");
 #endif
-		fprintf(stderr, "        [-m|--netmask] [-n|--network] [--cidr] [-p|--prefix] [--minaddr]\n");
-		fprintf(stderr, "        [--maxaddr] [--addresses] [--addrspace] [-j|--json] [-s|--silent]\n");
-		fprintf(stderr, "        [-v|--version] [--reverse-dns] [--class-prefix]\n");
+		fprintf(stderr, "        [-m|--netmask] [--wildcard] [-n|--network] [--cidr] [-p|--prefix]\n");
+		fprintf(stderr, "        [--minaddr] [--maxaddr] [--addresses] [--addrspace]\n");
+		fprintf(stderr, "        [--format=FORMAT]\n");
+		fprintf(stderr, "        [-s|--silent] [-v|--version] [--reverse-dns] [--class-prefix]\n");
 		fprintf(stderr, "        [-?|--help] [--usage]\n");
 	}
 }
@@ -1420,15 +1478,13 @@ void va_json_printf(unsigned * const jsonfirst, const char *jsontitle, const cha
 /* Always prints "title: value", will not color if --no-decorate is given
  */
 static void
-__attribute__ ((format(printf, 4, 5)))
-pretty_printf(unsigned * const jsonfirst, const char *title, const char *jsontitle, const char *fmt, ...)
+__attribute__ ((format(printf, 2, 3)))
+pretty_printf(const char *title, const char *fmt, ...)
 {
 	va_list args;
 
 	va_start(args, fmt);
-	if (flags & FLAG_JSON) {
-		va_json_printf(jsonfirst, jsontitle, fmt, args);
-	} else if (flags & FLAG_NO_DECORATE) {
+	if (flags & FLAG_NO_DECORATE) {
 		fputs(title, stdout);
 		vprintf(fmt, args);
 		fputs("\n", stdout);
@@ -1444,15 +1500,13 @@ pretty_printf(unsigned * const jsonfirst, const char *title, const char *jsontit
  * To be used for distinct values (e.g., a summary).
  */
 static void
-__attribute__ ((format(printf, 4, 5)))
-pretty_dist_printf(unsigned * const jsonfirst, const char *title, const char *jsontitle, const char *fmt, ...)
+__attribute__ ((format(printf, 2, 3)))
+pretty_dist_printf(const char *title, const char *fmt, ...)
 {
 	va_list args;
 
 	va_start(args, fmt);
-	if (flags & FLAG_JSON) {
-		va_json_printf(jsonfirst, jsontitle, fmt, args);
-	} else if (flags & FLAG_NO_DECORATE) {
+	if (flags & FLAG_NO_DECORATE) {
 		fputs(title, stdout);
 		vprintf(fmt, args);
 		fputs("\n", stdout);
@@ -1517,6 +1571,7 @@ dist_printf(unsigned * const jsonfirst, const char *title, const char *jsontitle
 #define FULL_NETWORK_NAME "FULLNETWORK"
 #define NETWORK_NAME "NETWORK"
 #define NETMASK_NAME "NETMASK"
+#define WILDCARD_NAME "WILDCARD"
 #define PREFIX_NAME "PREFIX"
 #define CIDR_NAME "CIDR"
 #define BROADCAST_NAME "BROADCAST"
@@ -1536,16 +1591,444 @@ dist_printf(unsigned * const jsonfirst, const char *title, const char *jsontitle
 #define CITY_NAME "CITY"
 #define COORDINATES_NAME "COORDINATES"
 
-static void show_iid_info(unsigned * const jsonchain, const ip_info_st *info)
+enum output_format {
+	FORMAT_HUMAN,	/* titled lines, colored on a terminal */
+	FORMAT_SHELL,	/* NAME=value */
+	FORMAT_JSON,
+	FORMAT_VALUE	/* values only */
+};
+
+static const char * const format_names[] = {
+	[FORMAT_HUMAN] = "human",
+	[FORMAT_SHELL] = "shell",
+	[FORMAT_JSON] = "json",
+	[FORMAT_VALUE] = "value",
+};
+
+/* -1, after reporting it, for an unknown format name */
+static int parse_format(const char *name)
 {
-	if (info->iid)
-		pretty_dist_printf(jsonchain, "Interface ID:\t", INTERFACEID_NAME, "%s", info->iid);
-	if (info->eui64) {
-		pretty_dist_printf(jsonchain, "EUI-64:\t\t", EUI64_NAME, "%s", info->eui64);
-		pretty_dist_printf(jsonchain, "MAC address:\t", MACADDR_NAME, "%s", info->mac);
-		pretty_dist_printf(jsonchain, "MAC scope:\t", MACSCOPE_NAME, "%s", info->mac_scope);
-		pretty_dist_printf(jsonchain, "MAC type:\t", MACTYPE_NAME, "%s", info->mac_type);
+	unsigned i;
+
+	for (i = 0; i < sizeof(format_names) / sizeof(format_names[0]); i++) {
+		if (strcmp(name, format_names[i]) == 0)
+			return i;
 	}
+	if (!beSilent)
+		fprintf(stderr, "ipcalc: unknown output format: %s; use human, shell, json or value\n",
+			name);
+	return -1;
+}
+
+/* How show_info_fields() prints a field; the option that selects a field is
+ * a FLAG_SHOW_* (or FLAG_RESOLVE_*) of enum ipcalc_flag */
+enum field_attr {
+	/* Without an ATTR_SUMMARY_* attribute a field is in the summary only when its option is given */
+	ATTR_SUMMARY_ALWAYS=1<<0,
+	ATTR_SUMMARY_WITH_ALL_INFO=1<<1,
+	/* the text summary already shows it as part of another field */
+	ATTR_SUMMARY_JSON_ONLY=1<<2,
+	/* the input address is meaningless for a network or a random network */
+	ATTR_SUMMARY_HIDE_FOR_NETWORK_ADDRESS=1<<3,
+	/* hidden in the text summary only, where it would repeat the single address */
+	ATTR_SUMMARY_HIDE_FOR_SINGLE_ADDRESS=1<<4,
+	/* printed in a different color than other values */
+	ATTR_SUMMARY_HIGHLIGHT=1<<5,
+	ATTR_VAR_QUOTE_ALWAYS=1<<6,
+	/* values-only output quotes as released, since scripts read it verbatim */
+	ATTR_VALUE_QUOTE_IF_SPACE=1<<7,
+	ATTR_REQUIRES_SINGLE_ADDRESS=1<<8
+};
+
+enum summary_section { SECTION_NETWORK, SECTION_RANGE, SECTION_GEO };
+
+/* A field without a value for the input's address family is left NULL by
+ * get_ipv4_info() or get_ipv6_info(), so it is never printed */
+struct output_field {
+	const char *title;
+	const char *name;
+	enum ipcalc_flag option;
+	const char *option_name;	/* named in diagnostics */
+	enum field_attr attrs;
+	enum summary_section section;
+	const char *value;
+	const char *text_value;		/* the value in the text summary, when it differs */
+	char * const *values;		/* instead of value, for a field with several values */
+	unsigned nvalues;
+};
+
+static unsigned field_has_value(const struct output_field *f)
+{
+	return f->value != NULL || f->nvalues > 0;
+}
+
+static unsigned field_in_summary(const struct output_field *f,
+				 enum output_format format,
+				 unsigned single_address,
+				 unsigned input_is_network)
+{
+	if (!field_has_value(f))
+		return 0;
+	if ((f->attrs & ATTR_SUMMARY_HIDE_FOR_NETWORK_ADDRESS) && input_is_network)
+		return 0;
+	if (format == FORMAT_HUMAN &&
+	    (((f->attrs & ATTR_SUMMARY_HIDE_FOR_SINGLE_ADDRESS) && single_address) || (f->attrs & ATTR_SUMMARY_JSON_ONLY)))
+		return 0;
+	if (flags & f->option)
+		return 1;
+	if (f->attrs & (ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_JSON_ONLY))
+		return 1;
+	return (f->attrs & ATTR_SUMMARY_WITH_ALL_INFO) && (flags & FLAG_SHOW_ALL_INFO);
+}
+
+static void show_json_field(unsigned * const jsonchain, const struct output_field *f)
+{
+	unsigned i;
+
+	if (!f->values) {
+		json_printf(jsonchain, f->name, "%s", f->value);
+		return;
+	}
+
+	/* always an array, so that its type does not depend on the number of values */
+	array_start(jsonchain, f->title, f->name);
+	for (i = 0; i < f->nvalues; i++)
+		json_printf(jsonchain, NULL, "%s", f->values[i]);
+	array_stop(jsonchain);
+}
+
+static void show_text_field(const struct output_field *f)
+{
+	const char *value = f->text_value ? f->text_value : f->value;
+	unsigned i;
+
+	if (f->values) {
+		for (i = 0; i < f->nvalues; i++)
+			pretty_printf(f->title, "%s", f->values[i]);
+	} else if (f->attrs & ATTR_SUMMARY_HIGHLIGHT) {
+		pretty_dist_printf(f->title, "%s", value);
+	} else {
+		pretty_printf(f->title, "%s", value);
+	}
+}
+
+/* Characters that the shell takes literally in an unquoted word; bytes of
+ * UTF-8 sequences are among them */
+static unsigned shell_safe(const char *value)
+{
+	const unsigned char *c;
+
+	for (c = (const unsigned char *)value; *c; c++) {
+		if (*c >= 0x80 || (*c >= 'a' && *c <= 'z') ||
+		    (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9'))
+			continue;
+		if (strchr("._:/-,+@%", *c) == NULL)
+			return 0;
+	}
+	return 1;
+}
+
+/* Inside double quotes the shell interprets only these characters */
+static void print_shell_escaped(const char *value)
+{
+	for (; *value; value++) {
+		if (strchr("\"\\$`", *value) != NULL)
+			putchar('\\');
+		putchar(*value);
+	}
+}
+
+/* NAME=value output must be usable with eval, whatever the value holds */
+static void print_shell_value(const char *value, unsigned quote)
+{
+	if (!quote && shell_safe(value)) {
+		fputs(value, stdout);
+		return;
+	}
+	putchar('"');
+	print_shell_escaped(value);
+	putchar('"');
+}
+
+static void show_var_field(const struct output_field *f, unsigned bare)
+{
+	unsigned i;
+
+	if (f->values) {
+		if (bare) {
+			/* one value per line, as with --deaggregate */
+			for (i = 0; i < f->nvalues; i++)
+				printf("%s\n", f->values[i]);
+		} else if (f->nvalues == 1) {
+			printf("%s=", f->name);
+			print_shell_value(f->values[0], 0);
+			putchar('\n');
+		} else {
+			/* a quoted, space-separated list */
+			printf("%s=\"", f->name);
+			for (i = 0; i < f->nvalues; i++) {
+				if (i > 0)
+					putchar(' ');
+				print_shell_escaped(f->values[i]);
+			}
+			printf("\"\n");
+		}
+		return;
+	}
+
+	if (bare) {
+		if ((f->attrs & ATTR_VAR_QUOTE_ALWAYS) ||
+		    ((f->attrs & ATTR_VALUE_QUOTE_IF_SPACE) &&
+		     strchr(f->value, ' ') != NULL))
+			printf("\"%s\"\n", f->value);
+		else
+			printf("%s\n", f->value);
+		return;
+	}
+
+	printf("%s=", f->name);
+	print_shell_value(f->value, f->attrs & ATTR_VAR_QUOTE_ALWAYS);
+	putchar('\n');
+}
+
+static unsigned field_selected(const struct output_field *f,
+			       enum output_format format,
+			       unsigned single_address,
+			       unsigned input_is_network)
+{
+	if (flags & FLAG_SHOW_MODERN_INFO)
+		return field_in_summary(f, format, single_address,
+					input_is_network);
+	return field_has_value(f) && (flags & f->option);
+}
+
+static void show_field(unsigned * const jsonchain, const struct output_field *f,
+		       enum output_format format)
+{
+	switch (format) {
+	case FORMAT_HUMAN:
+		show_text_field(f);
+		break;
+	case FORMAT_SHELL:
+		show_var_field(f, 0);
+		break;
+	case FORMAT_JSON:
+		show_json_field(jsonchain, f);
+		break;
+	case FORMAT_VALUE:
+		show_var_field(f, 1);
+		break;
+	}
+}
+
+/* Prints the summary or, when specific fields are selected, those fields;
+ * both in the order of fields[] and in the given format.
+ */
+static void show_info_fields(const ip_info_st *info, enum output_format format,
+			     unsigned randomized)
+{
+	unsigned human_summary = (flags & FLAG_SHOW_MODERN_INFO) &&
+				 format == FORMAT_HUMAN;
+	unsigned single_address = info->prefix == ((flags & FLAG_IPV6) ? 128 : 32);
+	unsigned input_is_network = !single_address &&
+				    (randomized || strcmp(info->network, info->ip) == 0);
+	char prefix[8];
+	char *cidr = NULL, *full_network = NULL, *netmask = NULL, *hosts = NULL;
+	unsigned jsonchain = JSON_FIRST;
+	enum summary_section section = SECTION_NETWORK;
+	unsigned i;
+
+	snprintf(prefix, sizeof(prefix), "%u", info->prefix);
+	safe_asprintf(&cidr, "%s/%u", info->network, info->prefix);
+	safe_asprintf(&netmask, "%s = %u", info->netmask, info->prefix);
+	if (info->expanded_network)
+		safe_asprintf(&full_network, "%s/%u", info->expanded_network, info->prefix);
+	if ((flags & FLAG_IPV6) && info->prefix < 112)
+		safe_asprintf(&hosts, "2^(%u) = %s", 128 - info->prefix, info->hosts);
+
+	const struct output_field fields[] = {
+		{ .title = "Full Address:\t", .name = FULL_ADDRESS_NAME, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIDE_FOR_NETWORK_ADDRESS, .value = info->expanded_ip },
+		{ .title = "Address:\t", .name = ADDRESS_NAME, .option = FLAG_SHOW_ADDRESS|FLAG_RESOLVE_IP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIDE_FOR_NETWORK_ADDRESS, .value = info->ip },
+		{ .title = "Hostname:\t", .name = HOSTNAME_NAME, .option = FLAG_RESOLVE_HOST, .option_name = "-h", .attrs = ATTR_SUMMARY_ALWAYS|ATTR_REQUIRES_SINGLE_ADDRESS, .value = info->hostname },
+		{ .title = "Full Network:\t", .name = FULL_NETWORK_NAME, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIDE_FOR_SINGLE_ADDRESS, .value = info->expanded_network, .text_value = full_network },
+		{ .title = "Network:\t", .name = NETWORK_NAME, .option = FLAG_SHOW_NETWORK, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIDE_FOR_SINGLE_ADDRESS, .value = info->network, .text_value = cidr },
+		{ .title = "Netmask:\t", .name = NETMASK_NAME, .option = FLAG_SHOW_NETMASK, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIDE_FOR_SINGLE_ADDRESS, .value = info->netmask, .text_value = netmask },
+		{ .title = "Wildcard:\t", .name = WILDCARD_NAME, .option = FLAG_SHOW_WILDCARD, .attrs = ATTR_SUMMARY_WITH_ALL_INFO|ATTR_SUMMARY_HIDE_FOR_SINGLE_ADDRESS, .value = info->wildcard },
+		{ .title = "Prefix:\t", .name = PREFIX_NAME, .option = FLAG_SHOW_PREFIX, .attrs = ATTR_SUMMARY_JSON_ONLY, .value = prefix },
+		{ .title = "CIDR:\t", .name = CIDR_NAME, .option = FLAG_SHOW_CIDR, .attrs = ATTR_SUMMARY_JSON_ONLY, .value = cidr },
+		{ .title = "Broadcast:\t", .name = BROADCAST_NAME, .option = FLAG_SHOW_BROADCAST, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIDE_FOR_SINGLE_ADDRESS, .value = info->broadcast },
+		{ .title = "Reverse DNS:\t", .name = REVERSEDNS_NAME, .option = FLAG_SHOW_REVERSE, .attrs = ATTR_SUMMARY_WITH_ALL_INFO, .values = info->reverse_dns, .nvalues = info->reverse_dns_count },
+		{ .title = "Address space:\t", .name = ADDRSPACE_NAME, .option = FLAG_SHOW_ADDRSPACE, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT|ATTR_VALUE_QUOTE_IF_SPACE, .section = SECTION_RANGE, .value = info->type },
+		{ .title = "Address class:\t", .name = ADDRCLASS_NAME, .attrs = ATTR_SUMMARY_WITH_ALL_INFO|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_RANGE, .value = info->class },
+		{ .title = "Interface ID:\t", .name = INTERFACEID_NAME, .attrs = ATTR_SUMMARY_WITH_ALL_INFO|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_RANGE, .value = info->iid },
+		{ .title = "EUI-64:\t\t", .name = EUI64_NAME, .attrs = ATTR_SUMMARY_WITH_ALL_INFO|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_RANGE, .value = info->eui64 },
+		{ .title = "MAC address:\t", .name = MACADDR_NAME, .attrs = ATTR_SUMMARY_WITH_ALL_INFO|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_RANGE, .value = info->mac },
+		{ .title = "MAC scope:\t", .name = MACSCOPE_NAME, .attrs = ATTR_SUMMARY_WITH_ALL_INFO|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_RANGE, .value = info->mac_scope },
+		{ .title = "MAC type:\t", .name = MACTYPE_NAME, .attrs = ATTR_SUMMARY_WITH_ALL_INFO|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_RANGE, .value = info->mac_type },
+		{ .title = "HostMin:\t", .name = MINADDR_NAME, .option = FLAG_SHOW_MINADDR, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIDE_FOR_SINGLE_ADDRESS, .section = SECTION_RANGE, .value = info->hostmin },
+		{ .title = "HostMax:\t", .name = MAXADDR_NAME, .option = FLAG_SHOW_MAXADDR, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIDE_FOR_SINGLE_ADDRESS, .section = SECTION_RANGE, .value = info->hostmax },
+		{ .title = "Hosts/Net:\t", .name = ADDRESSES_NAME, .option = FLAG_SHOW_ADDRESSES, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIDE_FOR_SINGLE_ADDRESS|ATTR_VALUE_QUOTE_IF_SPACE, .section = SECTION_RANGE, .value = info->hosts[0] ? info->hosts : NULL, .text_value = hosts },
+		/* geo values exist only when looked up, with -g or --all-info */
+		{ .title = "Country code:\t", .name = COUNTRYCODE_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_GEO, .value = info->geoip_ccode },
+		{ .title = "Country:\t", .name = COUNTRY_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT|ATTR_VALUE_QUOTE_IF_SPACE, .section = SECTION_GEO, .value = info->geoip_country },
+		{ .title = "City:\t\t", .name = CITY_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT|ATTR_VALUE_QUOTE_IF_SPACE, .section = SECTION_GEO, .value = info->geoip_city },
+		{ .title = "Coordinates:\t", .name = COORDINATES_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT|ATTR_VAR_QUOTE_ALWAYS, .section = SECTION_GEO, .value = info->geoip_coord },
+	};
+	const unsigned nfields = sizeof(fields) / sizeof(fields[0]);
+	const struct output_field *f;
+
+	for (i = 0; i < nfields; i++) {
+		f = &fields[i];
+		if ((f->attrs & ATTR_REQUIRES_SINGLE_ADDRESS) && (flags & f->option) && !single_address) {
+			if (!beSilent)
+				fprintf(stderr, "ipcalc: %s requires a single address, not a network: %s/%u\n",
+					f->option_name, info->ip, info->prefix);
+			exit(exit_failure);
+		}
+	}
+
+	output_start(&jsonchain);
+	for (i = 0; i < nfields; i++) {
+		f = &fields[i];
+		if (!field_selected(f, format, single_address,
+				    input_is_network))
+			continue;
+
+		if (human_summary && f->section != section) {
+			/* a single address has no network fields to separate
+			 * from its range fields */
+			if (f->section == SECTION_GEO || !single_address)
+				output_separate(&jsonchain);
+			section = f->section;
+		}
+
+		show_field(&jsonchain, f, format);
+	}
+	output_stop(&jsonchain);
+
+	free(cidr);
+	free(full_network);
+	free(netmask);
+	free(hosts);
+}
+
+/* The format implied by -j, --no-decorate and the selection, when no
+ * --format is given */
+static enum output_format legacy_format(void)
+{
+	if (flags & FLAG_JSON)
+		return FORMAT_JSON;
+	if (flags & FLAG_SHOW_MODERN_INFO)
+		return FORMAT_HUMAN;	/* uncolored with --no-decorate */
+	if (flags & FLAG_NO_DECORATE)
+		return FORMAT_VALUE;
+	return FORMAT_SHELL;
+}
+
+static int format_conflict(const char *option, enum output_format format)
+{
+	if (!beSilent)
+		fprintf(stderr, "ipcalc: conflicting output formats: %s and --format=%s\n",
+			option, format_names[format]);
+	return -1;
+}
+
+/* Applies --format=name, given again as other_name when that differs, and
+ * makes the flags that the other modes read agree with it */
+static int select_format(const char *name, const char *other_name,
+			 unsigned *selected_fields, enum output_format *format)
+{
+	int f = parse_format(name);
+
+	if (f < 0)
+		return -1;
+	if (other_name) {
+		if (parse_format(other_name) < 0)
+			return -1;
+		if (!beSilent)
+			fprintf(stderr, "ipcalc: conflicting output formats: --format=%s and --format=%s\n",
+				name, other_name);
+		return -1;
+	}
+	if ((flags & FLAG_JSON) && f != FORMAT_JSON)
+		return format_conflict("-j", f);
+	if ((flags & FLAG_NO_DECORATE) && f != FORMAT_VALUE)
+		return format_conflict("--no-decorate", f);
+
+	if (flags & FLAG_SHOW_MODERN_INFO) {
+		/* with -i or --all-info, -o only supplies the address */
+		*selected_fields &= ~FLAG_RESOLVE_IP;
+		if (*selected_fields) {
+			if (!beSilent)
+				fprintf(stderr, "ipcalc: -i and --all-info cannot be combined with options that select fields\n");
+			return -1;
+		}
+	}
+
+	if (f == FORMAT_JSON)
+		flags |= FLAG_JSON;
+	else if (f == FORMAT_VALUE)
+		flags |= FLAG_NO_DECORATE;
+	*format = f;
+	return 0;
+}
+
+static int check_format_for_app(enum output_format format, enum app_t app)
+{
+	const char *unsupported = NULL;
+
+	if ((app & (APP_SPLIT | APP_DEAGGREGATE)) && format == FORMAT_SHELL)
+		unsupported = "--split, --split-hosts or --deaggregate; use --format=value";
+	else if ((app & APP_COMPARE) && format != FORMAT_HUMAN)
+		unsupported = "--equals, --subnet-of or --overlaps";
+
+	if (unsupported) {
+		if (!beSilent)
+			fprintf(stderr, "ipcalc: --format=%s is not supported with %s\n",
+				format_names[format], unsupported);
+		return -1;
+	}
+
+	/* info mode is the default, so app may have no bit set */
+	if ((app & ~APP_SHOW_INFO) == 0 && format == FORMAT_VALUE &&
+	    (flags & FLAG_SHOW_MODERN_INFO)) {
+		if (!beSilent)
+			fprintf(stderr, "ipcalc: --format=value needs options that select fields; use --format=shell or --format=json for the summary\n");
+		return -1;
+	}
+	return 0;
+}
+
+/* Only on a terminal, so that the output of scripts does not change */
+static void suggest_format(enum app_t app, unsigned selected_fields)
+{
+	const char *option, *replacement;
+
+	if (beSilent || !isatty(STDERR_FILENO))
+		return;
+
+	if (flags & FLAG_JSON) {
+		option = "-j";
+		if (app & APP_COMPARE)
+			replacement = "-s to print no result";
+		else if (selected_fields)
+			replacement = "--format=json, which prints only the selected fields";
+		else
+			replacement = "--format=json";
+	} else if (flags & FLAG_NO_DECORATE) {
+		option = "--no-decorate";
+		if (app & APP_COMPARE)
+			replacement = "-s to print no result";
+		else if (selected_fields || (app & (APP_SPLIT | APP_DEAGGREGATE)))
+			replacement = "--format=value";
+		else
+			replacement = "--format=human";
+	} else {
+		return;
+	}
+
+	fprintf(stderr, "ipcalc: hint: %s is deprecated; use %s\n",
+		option, replacement);
 }
 
 /*!
@@ -1565,17 +2048,18 @@ int main(int argc, char **argv)
 	unsigned nsplits = 0;
 	char **splitHostsStrs = NULL;
 	unsigned nsplitHosts = 0;
-	char *ipStr = NULL, *prefixStr = NULL, *netmaskStr = NULL, *chptr = NULL;
+	char *ipStr = NULL, *prefixStr = NULL, *chptr = NULL;
 	int prefix = -1;
 	ip_info_st info;
 	int r = 0;
-	unsigned jsonchain = JSON_FIRST;
-	unsigned i;
 	enum app_t app = 0;
 	char *cmpStr = NULL;
 	enum net_comparison cmpOp = CMP_EQUALS;
 	unsigned ncmps = 0;
 	unsigned userFlags;
+	unsigned selected_fields = 0;
+	enum output_format format;
+	const char *formatStr = NULL, *otherFormatStr = NULL;
 	int badOption = 0;
 
 	while (1) {
@@ -1636,77 +2120,29 @@ int main(int argc, char **argv)
 			case OPT_CLASS_PREFIX:
 				flags |= FLAG_ASSUME_CLASS_PREFIX;
 				break;
-			case OPT_REVERSE:
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_SHOW_REVERSE;
-				break;
 			case '4':
 				flags |= FLAG_IPV4;
 				break;
 			case '6':
 				flags |= FLAG_IPV6;
 				break;
-			case 'a':
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_SHOW_ADDRESS;
-				break;
-			case 'b':
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_SHOW_BROADCAST;
-				break;
-			case 'h':
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_RESOLVE_HOST;
-				break;
 			case 'o':
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_RESOLVE_IP;
+				selected_fields |= field_flag_of_option(c);
 				hostname = safe_strdup(optarg);
 				if (hostname == NULL) exit(exit_failure);
-				break;
-#if defined(USE_GEOIP) || defined(USE_MAXMIND)
-			case 'g':
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_SHOW_GEOIP;
-				break;
-#endif
-			case 'm':
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_SHOW_NETMASK;
-				break;
-			case 'n':
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_SHOW_NETWORK;
-				break;
-			case 'p':
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_SHOW_PREFIX;
-				break;
-			case OPT_CIDR:
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_SHOW_CIDR;
-				break;
-			case OPT_MINADDR:
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_SHOW_MINADDR;
-				break;
-			case OPT_MAXADDR:
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_SHOW_MAXADDR;
-				break;
-			case OPT_ADDRESSES:
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_SHOW_ADDRESSES;
-				break;
-			case OPT_ADDRSPACE:
-				app |= APP_SHOW_INFO;
-				flags |= FLAG_SHOW_ADDRSPACE;
 				break;
 			case OPT_NO_DECORATE:
 				flags |= FLAG_NO_DECORATE;
 				break;
 			case 'j':
 				flags |= FLAG_JSON;
+				break;
+			case OPT_FORMAT:
+				if (formatStr == NULL)
+					formatStr = optarg;
+				else if (strcmp(formatStr, optarg) != 0 &&
+					 otherFormatStr == NULL)
+					otherFormatStr = optarg;
 				break;
 			case 's':
 				beSilent = 1;
@@ -1740,8 +2176,14 @@ int main(int argc, char **argv)
 				badOption = 1;
 				opterr = 0;
 				break;
+			default:
+				selected_fields |= field_flag_of_option(c);
+				break;
 		}
 	}
+
+	if (selected_fields)
+		app |= APP_SHOW_INFO;
 
 	if (badOption) {
 		usage(1);
@@ -1761,16 +2203,22 @@ int main(int argc, char **argv)
 			chptr = argv[optind++];
 	}
 
-	if ((flags & FLAG_JSON) && (flags & FLAG_NO_DECORATE)) {
+	if (formatStr) {
+		if (select_format(formatStr, otherFormatStr, &selected_fields,
+				  &format) < 0)
+			return exit_failure;
+	} else if ((flags & FLAG_JSON) && (flags & FLAG_NO_DECORATE)) {
 		flags &= ~FLAG_NO_DECORATE;
 	}
 
-	if (!(flags & FLAGS_TO_IGNORE_MASK))
+	/* without --format, JSON output is always the summary, to which
+	 * selected fields are added */
+	if (!selected_fields || (!formatStr && (flags & FLAG_JSON)))
 		flags |= FLAG_SHOW_MODERN_INFO;
+	flags |= selected_fields;
 
-	/* Only the modern info flag results to JSON output */
-	if ((flags & ENV_INFO_MASK) && (flags & FLAG_JSON))
-		flags |= FLAG_SHOW_MODERN_INFO;
+	if (!formatStr)
+		format = legacy_format();
 
 	if (geo_setup() == 0 && (flags & FLAG_SHOW_ALL_INFO))
 		flags |= FLAG_GET_GEOIP;
@@ -1781,6 +2229,11 @@ int main(int argc, char **argv)
 				"ipcalc: you cannot mix these options\n");
 		return exit_failure;
 	}
+
+	if (formatStr && check_format_for_app(format, app) < 0)
+		return exit_failure;
+	if (!formatStr)
+		suggest_format(app, selected_fields);
 
 	if ((flags & FLAG_IPV6) && (flags & FLAG_IPV4)) {
 		if (!beSilent)
@@ -1902,31 +2355,10 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (flags & FLAG_IPV6) {
+	if (flags & FLAG_IPV6)
 		r = get_ipv6_info(ipStr, prefix, &info, flags);
-	} else {
-		if ((flags & FLAG_SHOW_BROADCAST) || (flags & FLAG_SHOW_NETWORK) || (flags & FLAG_SHOW_PREFIX)) {
-			if (netmaskStr && prefix >= 0) {
-				if (!beSilent) {
-					fprintf(stderr,
-						"ipcalc: both netmask and prefix specified\n");
-					usage(1);
-				}
-				return exit_failure;
-			}
-		}
-
-		if (prefix == -1 && netmaskStr) {
-			prefix = ipv4_mask_to_int(netmaskStr);
-			if (prefix < 0) {
-				if (!beSilent)
-					fprintf(stderr,
-						"ipcalc: bad IPv4 prefix: %s\n", prefixStr);
-				return exit_failure;
-			}
-		}
+	else
 		r = get_ipv4_info(ipStr, prefix, &info, flags);
-	}
 
 	if (r < 0) {
 		return exit_failure;
@@ -1983,256 +2415,7 @@ int main(int argc, char **argv)
 	if ((isatty(STDOUT_FILENO) != 0) && (getenv("NO_COLOR") == 0))
 		colors = 1;
 
-	/* we know what we want to display now, so display it. */
-	if (flags & FLAG_SHOW_MODERN_INFO) {
-		unsigned single_host = 0;
-
-		if (((flags & FLAG_IPV6) && info.prefix == 128) ||
-		    (!(flags & FLAG_IPV6) && info.prefix == 32)) {
-			single_host = 1;
-		}
-
-		output_start(&jsonchain);
-
-		if ((!randomStr || single_host) &&
-		    (single_host || strcmp(info.network, info.ip) != 0)) {
-			if (info.expanded_ip) {
-				pretty_printf(&jsonchain,"Full Address:\t", FULL_ADDRESS_NAME, "%s", info.expanded_ip);
-			}
-			pretty_printf(&jsonchain, "Address:\t", ADDRESS_NAME, "%s", info.ip);
-		}
-
-		if (single_host && info.hostname)
-			pretty_printf(&jsonchain, "Hostname:\t", HOSTNAME_NAME, "%s", info.hostname);
-
-		if (!single_host || (flags & FLAG_JSON)) {
-			if (! (flags & FLAG_JSON)) {
-				if (info.expanded_network) {
-					pretty_printf(&jsonchain, "Full Network:\t", FULL_NETWORK_NAME, "%s/%u", info.expanded_network, info.prefix);
-				}
-				pretty_printf(&jsonchain, "Network:\t", NETWORK_NAME, "%s/%u", info.network, info.prefix);
-				pretty_printf(&jsonchain, "Netmask:\t", NETMASK_NAME, "%s = %u", info.netmask, info.prefix);
-			}
-			else {
-				if (info.expanded_network) {
-					pretty_printf(&jsonchain, "Full Network:\t", FULL_NETWORK_NAME, "%s", info.expanded_network);
-				}
-				pretty_printf(&jsonchain, "Network:\t", NETWORK_NAME, "%s", info.network);
-				pretty_printf(&jsonchain, "Netmask:\t", NETMASK_NAME, "%s", info.netmask);
-				pretty_printf(&jsonchain, "Prefix:\t", PREFIX_NAME, "%u", info.prefix);
-				pretty_printf(&jsonchain, "CIDR:\t", CIDR_NAME, "%s/%u", info.network, info.prefix);
-			}
-
-
-			if (info.broadcast)
-				pretty_printf(&jsonchain, "Broadcast:\t", BROADCAST_NAME, "%s", info.broadcast);
-		}
-
-		if (flags & FLAG_SHOW_ALL_INFO) {
-			/* always an array in JSON, so that its type does not depend on the prefix */
-			if ((flags & FLAG_JSON) && info.reverse_dns_count > 0) {
-				array_start(&jsonchain, "Reverse DNS", REVERSEDNS_NAME);
-				for (i = 0; i < info.reverse_dns_count; i++)
-					json_printf(&jsonchain, NULL, "%s", info.reverse_dns[i]);
-				array_stop(&jsonchain);
-			} else {
-				for (i = 0; i < info.reverse_dns_count; i++)
-					pretty_printf(&jsonchain, "Reverse DNS:\t", REVERSEDNS_NAME, "%s", info.reverse_dns[i]);
-			}
-		}
-
-		if (!single_host || (flags & FLAG_JSON)) {
-			output_separate(&jsonchain);
-
-			if (info.type)
-				pretty_dist_printf(&jsonchain, "Address space:\t", ADDRSPACE_NAME, "%s", info.type);
-
-			if ((flags & FLAG_SHOW_ALL_INFO) && info.class)
-				pretty_dist_printf(&jsonchain, "Address class:\t", ADDRCLASS_NAME, "%s", info.class);
-
-			if (flags & FLAG_SHOW_ALL_INFO)
-				show_iid_info(&jsonchain, &info);
-
-			if (info.hostmin)
-				pretty_printf(&jsonchain, "HostMin:\t", MINADDR_NAME, "%s", info.hostmin);
-
-			if (info.hostmax)
-				pretty_printf(&jsonchain, "HostMax:\t", MAXADDR_NAME, "%s", info.hostmax);
-
-			if ((flags & FLAG_IPV6) && info.prefix < 112 && !(flags & FLAG_JSON))
-				pretty_printf(&jsonchain, "Hosts/Net:\t", ADDRESSES_NAME, "2^(%u) = %s", 128-info.prefix, info.hosts);
-			else
-				pretty_printf(&jsonchain, "Hosts/Net:\t", ADDRESSES_NAME, "%s", info.hosts);
-
-		} else {
-
-			if (info.type)
-				pretty_dist_printf(&jsonchain, "Address space:\t", ADDRSPACE_NAME, "%s", info.type);
-
-			if ((flags & FLAG_SHOW_ALL_INFO) && info.class)
-				pretty_dist_printf(&jsonchain, "Address class:\t", ADDRCLASS_NAME, "%s", info.class);
-
-			if (flags & FLAG_SHOW_ALL_INFO)
-				show_iid_info(&jsonchain, &info);
-		}
-
-		if (info.geoip_country || info.geoip_city || info.geoip_coord) {
-			output_separate(&jsonchain);
-
-			if (info.geoip_ccode)
-				pretty_dist_printf(&jsonchain, "Country code:\t", COUNTRYCODE_NAME, "%s", info.geoip_ccode);
-			if (info.geoip_country)
-				pretty_dist_printf(&jsonchain, "Country:\t", COUNTRY_NAME, "%s", info.geoip_country);
-			if (info.geoip_city)
-				pretty_dist_printf(&jsonchain, "City:\t\t", CITY_NAME, "%s", info.geoip_city);
-			if (info.geoip_coord)
-				pretty_dist_printf(&jsonchain, "Coordinates:\t", COORDINATES_NAME, "%s", info.geoip_coord);
-		}
-
-		output_stop(&jsonchain);
-
-	} else if (!(flags & FLAG_SHOW_MODERN_INFO)) {
-
-		if (flags & FLAG_SHOW_ADDRESS) {
-			if (! (flags & FLAG_NO_DECORATE)) {
-				printf(ADDRESS_NAME"=");
-			}
-			printf("%s\n", info.ip);
-		}
-
-		if (flags & FLAG_SHOW_NETMASK) {
-			if (! (flags & FLAG_NO_DECORATE)) {
-				printf(NETMASK_NAME"=");
-			}
-			printf("%s\n", info.netmask);
-		}
-
-		if (flags & FLAG_SHOW_PREFIX) {
-			if (! (flags & FLAG_NO_DECORATE)) {
-				printf(PREFIX_NAME"=");
-			}
-			printf("%u\n", info.prefix);
-		}
-
-		if ((flags & FLAG_SHOW_BROADCAST) && !(flags & FLAG_IPV6)) {
-			if (! (flags & FLAG_NO_DECORATE)) {
-				printf(BROADCAST_NAME"=");
-			}
-			printf("%s\n", info.broadcast);
-		}
-
-		if (flags & FLAG_SHOW_NETWORK) {
-			if (! (flags & FLAG_NO_DECORATE)) {
-				printf(NETWORK_NAME"=");
-			}
-			printf("%s\n", info.network);
-		}
-
-		if (flags & FLAG_SHOW_CIDR) {
-			if (! (flags & FLAG_NO_DECORATE)) {
-				printf(CIDR_NAME"=");
-			}
-			printf("%s/%u\n", info.network, info.prefix);
-		}
-
-		if ((flags & FLAG_SHOW_REVERSE) && info.reverse_dns_count > 0) {
-			if (flags & FLAG_NO_DECORATE) {
-				/* one domain per line, as with --deaggregate */
-				for (i = 0; i < info.reverse_dns_count; i++)
-					printf("%s\n", info.reverse_dns[i]);
-			} else if (info.reverse_dns_count == 1) {
-				printf(REVERSEDNS_NAME"=%s\n", info.reverse_dns[0]);
-			} else {
-				/* a quoted, space-separated list keeps the output usable with eval */
-				printf(REVERSEDNS_NAME"=\"");
-				for (i = 0; i < info.reverse_dns_count; i++)
-					printf("%s%s", i > 0 ? " " : "", info.reverse_dns[i]);
-				printf("\"\n");
-			}
-		}
-
-		if ((flags & FLAG_SHOW_MINADDR) && info.hostmin) {
-			if (! (flags & FLAG_NO_DECORATE)) {
-				printf(MINADDR_NAME"=");
-			}
-			printf("%s\n", info.hostmin);
-		}
-
-		if ((flags & FLAG_SHOW_MAXADDR) && info.hostmax) {
-			if (! (flags & FLAG_NO_DECORATE)) {
-				printf(MAXADDR_NAME"=");
-			}
-			printf("%s\n", info.hostmax);
-		}
-
-		if ((flags & FLAG_SHOW_ADDRSPACE) && info.type) {
-			if (! (flags & FLAG_NO_DECORATE)) {
-				printf(ADDRSPACE_NAME"=");
-			}
-			if (strchr(info.type, ' ') != NULL)
-				printf("\"%s\"\n", info.type);
-			else
-				printf("%s\n", info.type);
-		}
-
-		if ((flags & FLAG_SHOW_ADDRESSES) && info.hosts[0]) {
-			if (! (flags & FLAG_NO_DECORATE)) {
-				printf(ADDRESSES_NAME"=");
-			}
-			if (strchr(info.hosts, ' ') != NULL)
-				printf("\"%s\"\n", info.hosts);
-			else
-				printf("%s\n", info.hosts);
-		}
-
-		if ((flags & FLAG_RESOLVE_HOST) && info.hostname) {
-			if (! (flags & FLAG_NO_DECORATE)) {
-				printf(HOSTNAME_NAME"=");
-			}
-			printf("%s\n", info.hostname);
-		}
-
-		if (flags & FLAG_RESOLVE_IP) {
-			if (! (flags & FLAG_NO_DECORATE)) {
-				printf(ADDRESS_NAME"=");
-			}
-			printf("%s\n", ipStr);
-		}
-
-		if ((flags & FLAG_SHOW_GEOIP) == FLAG_SHOW_GEOIP) {
-			if (info.geoip_ccode) {
-				if (! (flags & FLAG_NO_DECORATE)) {
-					printf(COUNTRYCODE_NAME"=");
-				}
-				printf("%s\n", info.geoip_ccode);
-			}
-			if (info.geoip_country) {
-				if (! (flags & FLAG_NO_DECORATE)) {
-					printf(COUNTRY_NAME"=");
-				}
-				if (strchr(info.geoip_country, ' ') != NULL)
-					printf("\"%s\"\n", info.geoip_country);
-				else
-					printf("%s\n", info.geoip_country);
-			}
-			if (info.geoip_city) {
-				if (! (flags & FLAG_NO_DECORATE)) {
-					printf(CITY_NAME"=");
-				}
-				if (strchr(info.geoip_city, ' ') != NULL) {
-					printf("\"%s\"\n", info.geoip_city);
-				} else {
-					printf("%s\n", info.geoip_city);
-				}
-			}
-			if (info.geoip_coord) {
-				if (! (flags & FLAG_NO_DECORATE)) {
-					printf(COORDINATES_NAME"=");
-				}
-				printf("\"%s\"\n", info.geoip_coord);
-			}
-		}
-	}
+	show_info_fields(&info, format, randomStr != NULL);
 
 	return 0;
 }

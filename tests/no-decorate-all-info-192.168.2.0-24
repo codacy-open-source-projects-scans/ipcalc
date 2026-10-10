@@ -1,5 +1,6 @@
 Network:	192.168.2.0/24
 Netmask:	255.255.255.0 = 24
+Wildcard:	0.0.0.255
 Broadcast:	192.168.2.255
 Reverse DNS:	2.168.192.in-addr.arpa.
 

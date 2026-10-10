@@ -22,13 +22,7 @@
 
 #include <stdarg.h> /* for va_list */
 
-#if defined(USE_GEOIP)
-  void geo_ip_lookup(const char *ip, char **country, char **ccode, char **city, char  **coord);
-  int geo_setup(void);
-# ifndef USE_RUNTIME_LINKING
-#   define geo_setup() 0
-# endif
-#elif defined(USE_MAXMIND)
+#ifdef USE_MAXMIND
   void geo_ip_lookup(const char *ip, char **country, char **ccode, char **city, char  **coord);
   int geo_setup(void);
 # ifndef USE_RUNTIME_LINKING
@@ -67,6 +61,7 @@ typedef struct ip_info_st {
 	char *network;
 	char *broadcast;	/* ipv4 only */
 	char *netmask;
+	char *wildcard;	/* ipv4 only */
 	char *hostname;
 	char *geoip_country;
 	char *geoip_ccode;
@@ -97,36 +92,34 @@ enum app_t {
 	APP_COMPARE=1<<5
 };
 
-#define FLAG_IPV6 (1<<1)
-#define FLAG_IPV4 (1<<2)
-#define FLAG_SHOW_MODERN_INFO (1<<3)
-#define FLAG_RESOLVE_IP (1<<4)
-#define FLAG_RESOLVE_HOST (1<<5)
-#define FLAG_SHOW_BROADCAST (1<<6)
-#define FLAG_SHOW_NETMASK (1<<7)
-#define FLAG_SHOW_NETWORK (1<<8)
-#define FLAG_SHOW_PREFIX (1<<9)
-#define FLAG_SHOW_MINADDR (1<<10)
-#define FLAG_SHOW_MAXADDR (1<<11)
-#define FLAG_SHOW_ADDRESSES (1<<12)
-#define FLAG_SHOW_ADDRSPACE (1<<13)
-#define FLAG_GET_GEOIP (1<<14)
-#define FLAG_SHOW_GEOIP ((1<<15)|FLAG_GET_GEOIP)
-#define FLAG_SHOW_ALL_INFO (1<<16)
-#define FLAG_SHOW_REVERSE (1<<17)
-#define FLAG_ASSUME_CLASS_PREFIX (1<<18)
-#define FLAG_SHOW_CIDR (1<<19)
-#define FLAG_NO_DECORATE (1<<20)
-#define FLAG_SHOW_ADDRESS (1<<21)
-#define FLAG_JSON (1<<22)
-#define FLAG_RANDOM (1<<23)
-
-/* Flags that are modifying an existing option */
-#define FLAGS_TO_IGNORE (FLAG_IPV6|FLAG_IPV4|FLAG_GET_GEOIP|FLAG_NO_DECORATE|FLAG_JSON|FLAG_ASSUME_CLASS_PREFIX|(1<<16)|FLAG_RANDOM)
-#define FLAGS_TO_IGNORE_MASK (~FLAGS_TO_IGNORE)
-
-#define ENV_INFO_FLAGS (FLAG_SHOW_NETMASK|FLAG_SHOW_BROADCAST|FLAG_RESOLVE_IP|FLAG_RESOLVE_HOST|FLAG_SHOW_ADDRESS|FLAG_SHOW_REVERSE|FLAG_SHOW_GEOIP|FLAG_SHOW_ADDRSPACE|FLAG_SHOW_ADDRESSES|FLAG_SHOW_MAXADDR|FLAG_SHOW_MINADDR|FLAG_SHOW_PREFIX|FLAG_SHOW_NETWORK|FLAG_SHOW_CIDR)
-#define ENV_INFO_MASK (~ENV_INFO_FLAGS)
+/* Bits of the global flags: options to show a field (FLAG_SHOW_*, FLAG_RESOLVE_*)
+ * and modifiers of the output or input */
+enum ipcalc_flag {
+	FLAG_IPV6=1<<1,
+	FLAG_IPV4=1<<2,
+	FLAG_SHOW_MODERN_INFO=1<<3,
+	FLAG_RESOLVE_IP=1<<4,
+	FLAG_RESOLVE_HOST=1<<5,
+	FLAG_SHOW_BROADCAST=1<<6,
+	FLAG_SHOW_NETMASK=1<<7,
+	FLAG_SHOW_NETWORK=1<<8,
+	FLAG_SHOW_PREFIX=1<<9,
+	FLAG_SHOW_MINADDR=1<<10,
+	FLAG_SHOW_MAXADDR=1<<11,
+	FLAG_SHOW_ADDRESSES=1<<12,
+	FLAG_SHOW_ADDRSPACE=1<<13,
+	FLAG_GET_GEOIP=1<<14,
+	FLAG_SHOW_GEOIP=(1<<15)|FLAG_GET_GEOIP,
+	FLAG_SHOW_ALL_INFO=1<<16,
+	FLAG_SHOW_REVERSE=1<<17,
+	FLAG_ASSUME_CLASS_PREFIX=1<<18,
+	FLAG_SHOW_CIDR=1<<19,
+	FLAG_NO_DECORATE=1<<20,
+	FLAG_SHOW_ADDRESS=1<<21,
+	FLAG_JSON=1<<22,
+	FLAG_RANDOM=1<<23,
+	FLAG_SHOW_WILDCARD=1<<24,
+};
 
 /* A split request: count subnets of size /prefix. A count of zero makes it
  * the fill request, which takes all the remaining space. When hosts is

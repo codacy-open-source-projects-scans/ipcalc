@@ -6,7 +6,7 @@ as well as a tool suitable to be used by scripts or other programs.
 
 It supports printing a summary about the provided network address, multiple
 command line options per information to be printed, transparent IPv6 support,
-and in addition it will use libGeoIP if available to provide geographic information.
+and in addition it will use libmaxminddb if available to provide geographic information.
 
 The project started as a fork of the ipcalc tool in the Fedora distribution
 but it has since then replaced the original tool.
@@ -30,18 +30,17 @@ $ meson configure build
 ```
 
 In order to access geo-information, ipcalc depends on the maxmind
-database (libmaxminddb). Alternatively it can be built using the older
-libgeoip (libgeoip), or with no geo-information whatsoever. Meson will
-detect which supported geo-information libraries are available on your system,
-if any, and automatically choose the best one. You can override this choice by
-providing `-Duse_maxminddb=enabled` to `meson setup` or `meson configure` to
-require libmaxminddb or `-Duse_maxminddb=disabled -Duse_geoip=enabled` to
-require libgeoip. See `meson configure build` for more options.
+database (libmaxminddb). Alternatively it can be built with no
+geo-information whatsoever. Meson will use libmaxminddb if it is available
+on your system. You can override this choice by providing
+`-Duse_maxminddb=enabled` to `meson setup` or `meson configure` to
+require libmaxminddb, or `-Duse_maxminddb=disabled` to build without it.
+See `meson configure build` for more options.
 
 For example, the following command will compile with no support for
 geo-information.
 ```
-$ meson setup build `-Duse_maxminddb=disabled -Duse_geoip=disabled`
+$ meson setup build `-Duse_maxminddb=disabled`
 $ ninja -C build
 ```
 
@@ -77,8 +76,8 @@ Although the Meson Build System, described above, is the recommended way to
 build this application, the legacy GNU Makefile is still supported for older
 systems that do not have the requisite versions of Meson and Ninja readily
 available. The primary limitations of using the Makefile are that it does not
-do automatic detection of libmaxminddb or libgeoip - you may have to specify
-support for one or neither of those libraries manually - and there is no easy
+do automatic detection of libmaxminddb - you may have to disable it
+manually - and there is no easy
 way to run the test suite.
 
 To build using the legacy GNU Makefile simply type:
@@ -87,14 +86,13 @@ $ make
 ```
 
 In order to access geo-information the application depends on the maxmind
-database (libmaxminddb). Alternatively it can be built using the older
-libgeoip (libgeoip) or with no geo-information whatsoever. The options
-can be provided on the makefile via the variables USE_GEOIP (yes/no),
-USE_MAXMIND (yes/no). For example the following command will compile
-with no support for geo-information.
+database (libmaxminddb). Alternatively it can be built with no
+geo-information whatsoever. The option can be provided on the makefile
+via the variable USE_MAXMIND (yes/no). For example the following command
+will compile with no support for geo-information.
 
 ```
-$ make USE_GEOIP=no USE_MAXMIND=no
+$ make USE_MAXMIND=no
 ```
 
 
@@ -107,6 +105,7 @@ $ ipcalc --all-info 193.92.150.2/24
 Address:        193.92.150.2
 Network:        193.92.150.0/24
 Netmask:        255.255.255.0 = 24
+Wildcard:       0.0.0.255
 Broadcast:      193.92.150.255
 Reverse DNS:    150.92.193.in-addr.arpa.
 
@@ -121,15 +120,24 @@ Country:        Greece
 ```
 
 ```
-$ ipcalc -pnmb --minaddr --maxaddr --geoinfo --addrspace 193.92.150.2/255.255.255.224
+$ ipcalc --format=shell -pnmb --minaddr --maxaddr --geoinfo --addrspace 193.92.150.2/255.255.255.224
+NETWORK=193.92.150.0
 NETMASK=255.255.255.224
 PREFIX=27
 BROADCAST=193.92.150.31
-NETWORK=193.92.150.0
+ADDRSPACE=Internet
 MINADDR=193.92.150.1
 MAXADDR=193.92.150.30
-ADDRSPACE="Internet"
-COUNTRY="Greece"
+COUNTRYCODE=GR
+COUNTRY=Greece
+```
+
+```
+$ ipcalc --format=json -n -p 193.92.150.2/24
+{
+  "NETWORK":"193.92.150.0",
+  "PREFIX":"24"
+}
 ```
 
 ## IPv6
@@ -158,14 +166,15 @@ Country:        Ireland
 ```
 
 ```
-$ ipcalc -pnmb --minaddr --maxaddr --addrspace --geoinfo 2a03:2880:20:4f06:21b:21ff:fe3a:5c7d/64
+$ ipcalc --format=shell -pnmb --minaddr --maxaddr --addrspace --geoinfo 2a03:2880:20:4f06:21b:21ff:fe3a:5c7d/64
+NETWORK=2a03:2880:20:4f06::
 NETMASK=ffff:ffff:ffff:ffff::
 PREFIX=64
-NETWORK=2a03:2880:20:4f06::
+ADDRSPACE="Global Unicast"
 MINADDR=2a03:2880:20:4f06::
 MAXADDR=2a03:2880:20:4f06:ffff:ffff:ffff:ffff
-ADDRSPACE="Global Unicast"
-COUNTRY="Ireland"
+COUNTRYCODE=IE
+COUNTRY=Ireland
 ```
 
 ## Comparing networks
@@ -197,7 +206,7 @@ inside
 ## JSON output
 
 ```
-$ ipcalc --all-info -j 2a03:2880:20:4f06:21b:21ff:fe3a:5c7d/64
+$ ipcalc --all-info --format=json 2a03:2880:20:4f06:21b:21ff:fe3a:5c7d/64
 {
   "FULLADDRESS":"2a03:2880:0020:4f06:021b:21ff:fe3a:5c7d",
   "ADDRESS":"2a03:2880:20:4f06:21b:21ff:fe3a:5c7d",
@@ -206,7 +215,8 @@ $ ipcalc --all-info -j 2a03:2880:20:4f06:21b:21ff:fe3a:5c7d/64
   "NETMASK":"ffff:ffff:ffff:ffff::",
   "PREFIX":"64",
   "CIDR":"2a03:2880:20:4f06::/64",
-  "REVERSEDNS":"6.0.f.4.0.2.0.0.0.8.8.2.3.0.a.2.ip6.arpa.",
+  "REVERSEDNS":[
+    "6.0.f.4.0.2.0.0.0.8.8.2.3.0.a.2.ip6.arpa."],
   "ADDRSPACE":"Global Unicast",
   "INTERFACEID":"021b:21ff:fe3a:5c7d",
   "EUI64":"00:1b:21:ff:fe:3a:5c:7d",
