@@ -21,7 +21,7 @@ this document covers how ipcalc is invoked and how results are printed.
 **Requirement:** ipcalc MUST select exactly one mode per invocation from
 the options given: version (`-v`), check (`-c`), comparison
 (`--equals`, `--subnet-of`, `--overlaps`), split (`-S`, `--split-hosts`),
-deaggregate (`-d`), or info (`-i`, `--all-info`, `-r`, `-a`, `-b`,
+deaggregate (`-d`), binary (`--binary`), or info (`-i`, `--all-info`, `-r`, `-a`, `-b`,
 `-m`, `-n`, `-p`, `-h`, `-o`, `-g`, `--reverse-dns`, `--cidr`,
 `--wildcard`, `--minaddr`, `--maxaddr`, `--addresses`, `--addrspace`), and MUST use the info mode
 when none of these options is given, so that every invocation has one
@@ -41,7 +41,7 @@ that conflicting requests are not silently resolved.
 **Strength:** MUST NOT
 **Status:** DERIVED
 **Source:** ipcalc.c:main (`bit_count(app) > 1`)
-**Acceptance:** `ipcalc -abmnp -S 26 10.100.1.0/24`, `ipcalc -c -abmnp 10.100.1.1`, `ipcalc -c -S 26 10.100.1.0/24`, `ipcalc -c -h 127.0.0.1`, `ipcalc -n --split-hosts=10 10.100.1.0/24`, `ipcalc -v -n 1.2.3.4` → exit 1; `ipcalc --equals=10.0.0.0/8 -n 10.0.0.0/8`, `ipcalc -c 10.0.0.0/8 --equals=10.0.0.0/8` → exit 2 — negative ; test: Split-Info, SplitHosts-Info, Check-Info, Check-Split, Check-Host, Equals-Info, Check-Equals (no test for `-v` with another mode)
+**Acceptance:** `ipcalc -abmnp -S 26 10.100.1.0/24`, `ipcalc -c -abmnp 10.100.1.1`, `ipcalc -c -S 26 10.100.1.0/24`, `ipcalc -c -h 127.0.0.1`, `ipcalc -n --split-hosts=10 10.100.1.0/24`, `ipcalc -v -n 1.2.3.4`, `ipcalc --binary -i 10.0.0.0/8`, `ipcalc --binary --all-info 10.0.0.0/8`, `ipcalc --binary -n 10.0.0.0/8`, `ipcalc --binary --cidr 10.0.0.0/8`, `ipcalc --binary -c 10.0.0.0/8`, `ipcalc --binary -S 24 10.0.0.0/8`, `ipcalc --binary --split-hosts=10 10.0.0.0/8`, `ipcalc --binary -d 10.0.0.0-10.0.0.255`, `ipcalc --binary -r 24` → exit 1; `ipcalc --equals=10.0.0.0/8 -n 10.0.0.0/8`, `ipcalc -c 10.0.0.0/8 --equals=10.0.0.0/8`, `ipcalc --binary 10.0.0.0/8 --equals=10.0.0.0/8` → exit 2 — negative ; test: Split-Info, SplitHosts-Info, Check-Info, Check-Split, Check-Host, Equals-Info, Check-Equals, Bits-Info, Bits-AllInfo, Bits-Network, Bits-Cidr, Bits-Check, Bits-Split, Bits-SplitHosts, Bits-Deaggregate, Bits-Random, Bits-Equals (no test for `-v` with another mode)
 **Links:** REQ-CLI-INPUT-001, REQ-CLI-OUTPUT-009
 
 ### REQ-CLI-INPUT-002
@@ -269,7 +269,7 @@ when only `-i`, `--all-info`, `-r`, `-4`, `-6`, `--class-prefix`,
 print the summary as a JSON object (REQ-INFO-OUTPUT-003) whichever
 field-selecting options are given; those options only add their fields
 to it (e.g. `--reverse-dns`, `--wildcard`). `-j` MUST also select JSON
-output in split and deaggregate modes; in comparison mode it MUST
+output in split, deaggregate and bits (REQ-BINARY-OUTPUT-002) modes; in comparison mode it MUST
 suppress the result line (REQ-CLI-OUTPUT-010). `-j` is deprecated in
 favor of `--format=json` (REQ-CLI-OUTPUT-014), but MUST keep this
 behavior so that existing commands keep their output.
@@ -323,21 +323,23 @@ without the quoting and escaping of REQ-CLI-OUTPUT-005, so that a
 reader that splits at the first space still gets the whole value and a
 script that reads a single value gets it verbatim. `--no-decorate` is
 deprecated in favor of `--format=value` and `--format=human`
-(REQ-CLI-OUTPUT-014), but MUST keep this behavior.
+(REQ-CLI-OUTPUT-014), but MUST keep this behavior; `--binary`, which
+was added after the deprecation, rejects it (REQ-BINARY-INPUT-002).
 **Strength:** MUST
 **Status:** DERIVED
 **Source:** ipcalc.c:main (`if ((flags & FLAG_JSON) && (flags & FLAG_NO_DECORATE)) flags &= ~FLAG_NO_DECORATE`); ipcalc.c:main (`FORMAT_VALUE`, `FORMAT_HUMAN` with `FLAG_NO_DECORATE`); ipcalc.c:show_var_field (`bare`, `ATTR_VALUE_QUOTE_IF_SPACE`, `ATTR_VAR_QUOTE_ALWAYS`); ipcalc.c:pretty_printf; ipcalc.1.md#Deprecated options (`--no-decorate`)
 **Acceptance:** `ipcalc -abmnp --minaddr --maxaddr --addresses --no-decorate 192.168.2.7/24` → tests/192.168.2.7; `ipcalc --addrspace --no-decorate 10.0.0.1` → `"Private Use"`; `ipcalc --no-decorate -h 127.0.0.1` with 127.0.0.1 resolving to `a"b\c<TAB>d` → exactly that name; `ipcalc --reverse-dns --no-decorate 2001:db8:abcd::/37` → one domain per line; `ipcalc -j --no-decorate -S 24 10.10.10.0/16` → same as `-j` — positive ; test: SpecificInfoOutputNoDecorate, SpecificInfoOutputNoDecorateQuotedAddrspace, LookupReverseDNSNoDecoratePrefix37IPv6, NoDecorateInfo, JsonNoDecorateSplitPrefix24, NoDecorateHostnameVerbatim (Linux only; tests/fake-getnameinfo.c)
 
 ### REQ-CLI-OUTPUT-007
-**Requirement:** ipcalc MUST emit ANSI color codes in the summary output
-and in `--format=human` output (REQ-CLI-OUTPUT-012) only when stdout
+**Requirement:** ipcalc MUST emit ANSI color codes in the summary output,
+in `--format=human` output (REQ-CLI-OUTPUT-012), and in the binary diagram
+(REQ-BINARY-OUTPUT-006) only when stdout
 is a terminal and the `NO_COLOR` environment variable is unset, and
 MUST NOT emit them with `--no-decorate` or in split, deaggregate,
 comparison, `NAME=value`, value, or JSON output.
 **Strength:** MUST
 **Status:** DERIVED
-**Source:** ipcalc.c:main (`isatty(STDOUT_FILENO) && getenv("NO_COLOR") == 0`, set after the split/deaggregate/check returns); ipcalc.c:va_color_printf; ipcalc.1.md#Environment (`NO_COLOR`)
+**Source:** ipcalc.c:main (`isatty(STDOUT_FILENO) && getenv("NO_COLOR") == 0`, set after the split/deaggregate/check returns); ipcalc.c:va_color_printf, ipcalc.c:color_fputs; ipcalc.1.md#Environment (`NO_COLOR`)
 **Acceptance:** any test in tests/meson.build (stdout not a TTY) → no escape codes — positive ; test: all `--test-outfile` tests (no TTY test exists)
 
 ### REQ-CLI-OUTPUT-008
@@ -394,12 +396,13 @@ The summary in `shell` format MUST print the keys of the JSON summary
 **Requirement:** With `--format`, split (`-S`, `--split-hosts`) and
 deaggregate (`-d`) output MUST be printed as without any format option
 for `human`, as with `-j` for `json`, and as with `--no-decorate` for
-`value`. Comparison mode MUST print its result line
-(REQ-CLI-OUTPUT-010) with `--format=human`. Check mode and `-v` MUST
-ignore `--format`.
+`value`. Binary mode (`--binary`) MUST accept all four formats
+(REQ-BINARY-OUTPUT-001 to REQ-BINARY-OUTPUT-003). Comparison mode MUST
+print its result line (REQ-CLI-OUTPUT-010) with `--format=human`.
+Check mode and `-v` MUST ignore `--format`.
 **Strength:** MUST
 **Status:** DERIVED
-**Source:** ipcalc.c:select_format (`FORMAT_JSON` → `FLAG_JSON`, `FORMAT_VALUE` → `FLAG_NO_DECORATE`), read by netsplit.c, deaggregate.c, netcompare.c
+**Source:** ipcalc.c:select_format (`FORMAT_JSON` → `FLAG_JSON`, `FORMAT_VALUE` → `FLAG_NO_DECORATE`), read by netsplit.c, deaggregate.c, netcompare.c; binary.c:show_binary (`format`)
 **Acceptance:** `ipcalc --format=value -S 26 192.168.5.45/24` → tests/nsplit-192.168.5.45-24-26; `ipcalc --format=json -S 26 192.168.5.45/24` → tests/json-split-192.168.5.45-24-26; `ipcalc --format=human -S 26 192.168.5.45/24` → tests/split-192.168.5.45-24-26; `ipcalc --format=value -d 192.168.2.7-192.168.2.13` → tests/deaggregate-192.168.2.7-192.168.2.13; `ipcalc --format=human 192.168.7.15/24 --equals=192.168.7.5/24` → `The networks are equal`, exit 0; `ipcalc -c --format=shell 127.0.0.1` → exit 0 — positive ; test: FormatValueSplit, FormatJsonSplit, FormatHumanSplit, FormatValueDeaggregate, FormatHumanEquals, FormatCheck
 **Links:** REQ-CLI-OUTPUT-011, REQ-CLI-ERR-009
 
@@ -439,8 +442,8 @@ names the alternative:
 | two different `--format` values | `ipcalc: conflicting output formats: --format=A and --format=B` |
 | `-j` with `--format` other than `json` | `ipcalc: conflicting output formats: -j and --format=B` |
 | `--no-decorate` with `--format` other than `value` | `ipcalc: conflicting output formats: --no-decorate and --format=B` |
-| `-i` or `--all-info` with a field-selecting option other than `-o` | `ipcalc: -i and --all-info cannot be combined with options that select fields` |
-| `value` without a field-selecting option in info mode | `ipcalc: --format=value needs options that select fields; use --format=shell or --format=json for the summary` |
+| `-i` or `--all-info` with a field-selecting option other than `-o` | `ipcalc: -i and --all-info cannot be combined with specific field options` |
+| `value` without a field-selecting option in info mode | `ipcalc: --format=value needs specific field options; use --format=shell or --format=json` |
 | `shell` with `-S`, `--split-hosts` or `-d` | `ipcalc: --format=shell is not supported with --split, --split-hosts or --deaggregate; use --format=value` |
 | `json`, `value` or `shell` with a comparison option | `ipcalc: --format=B is not supported with --equals, --subnet-of or --overlaps` |
 

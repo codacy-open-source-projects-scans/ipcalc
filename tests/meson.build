@@ -1311,6 +1311,74 @@ if have_geo
 			ipcalc.full_path() + ' -g 127.0.0.1'
 		]
 	)
+
+	# ipcalc-geo reads databases generated from geo-*.json instead of the
+	# system ones, whose contents vary
+	python = import('python').find_installation()
+	geo_dbs = []
+	foreach db : ['country', 'city', 'asn']
+		geo_dbs += custom_target('geo-' + db + '.mmdb',
+			input : ['mkmmdb.py', 'geo-' + db + '.json'],
+			output : 'geo-' + db + '.mmdb',
+			command : [python, '@INPUT@', '@OUTPUT@'],
+			build_by_default : true
+		)
+	endforeach
+	ipcalc_geo = executable('ipcalc-geo',
+		sources : src,
+		c_args : args + [
+			'-DMAXMINDDB_LOCATION_COUNTRY="' + geo_dbs[0].full_path() + '"',
+			'-DMAXMINDDB_LOCATION_CITY="' + geo_dbs[1].full_path() + '"',
+			'-DMAXMINDDB_LOCATION_ASN="' + geo_dbs[2].full_path() + '"'
+		],
+		dependencies : deps
+	)
+
+	# [name, arguments, expected output]
+	foreach c : [
+		['GeoInfoIPv4', '-g 192.0.2.5', 'geo-192.0.2.5'],
+		['GeoInfoIPv6', '-g 2001:db8::1', 'geo-2001:db8::1'],
+		['GeoInfoNoCountry', '-g 198.51.100.200', 'geo-198.51.100.200'],
+		['GeoInfoRegisteredCountry', '-g 198.51.100.5', 'geo-198.51.100.5'],
+		['GeoInfoRepresentedCountry', '-g 198.51.100.130', 'geo-198.51.100.130'],
+		['GeoInfoASNOnly', '-g 203.0.113.1', 'geo-203.0.113.1'],
+		['GeoInfoAllInfo', '--all-info 192.0.2.5', 'geo-all-info-192.0.2.5'],
+		['GeoInfoNotFound', '--all-info 10.0.0.1', 'geo-all-info-10.0.0.1'],
+		['GeoInfoJson', '--format=json -g 2001:db8::1', 'geo-json-2001:db8::1'],
+		['GeoInfoNetworkWithinRecords', '-g 192.0.2.0/24', 'geo-192.0.2.0-24'],
+		['GeoInfoNetworkLargerThanCity', '-g 192.0.2.77/23', 'geo-192.0.2.77-23'],
+		['GeoInfoNetworkLargerThanCityIPv6', '-g 2001:db8::/32', 'geo-2001:db8::-32'],
+		['GeoInfoNetworkLargerThanRecords', '--all-info 192.0.0.0/16', 'geo-all-info-192.0.0.0-16'],
+	]
+		test(c[0], testrunner,
+			args : ['--test-outfile', ipcalc_geo.full_path() + ' ' + c[1], files(c[2])],
+			depends : geo_dbs
+		)
+	endforeach
+
+	# ipcalc-nolib cannot load libmaxminddb at run time
+	if dl.found()
+		nolib_args = ['-DLIBPATH="/nonexistent"']
+		foreach a : args
+			if not a.startswith('-DLIBPATH=')
+				nolib_args += a
+			endif
+		endforeach
+		ipcalc_nolib = executable('ipcalc-nolib',
+			sources : src,
+			c_args : nolib_args,
+			dependencies : deps
+		)
+		test('GeoLibraryMissing', testrunner,
+			args : ['--test-outfile', ipcalc_nolib.full_path() + ' -g 192.0.2.5',
+				files('geo-nolib-192.0.2.5')])
+		test('GeoLibraryMissingAllInfo', testrunner,
+			args : ['--test-outfile', ipcalc_nolib.full_path() + ' --all-info 192.0.2.5',
+				files('geo-nolib-all-info-192.0.2.5')])
+		test('GeoLibraryMissingSilent', testrunner,
+			args : ['--test-success',
+				'[ -z "$(' + ipcalc_nolib.full_path() + ' -s -g 192.0.2.5 2>&1)" ]'])
+	endif
 else
 	test('GeoInfoShortUnavailable',
 		testrunner,
@@ -2464,9 +2532,9 @@ foreach c : [
 	['FormatTwice', '1', '--format=json --format=shell 10.0.0.1', 'ipcalc: conflicting output formats: --format=json and --format=shell'],
 	['FormatConflictJson', '1', '-j --format=shell 10.0.0.1', 'ipcalc: conflicting output formats: -j and --format=shell'],
 	['FormatConflictNoDecorate', '1', '--no-decorate --format=json -m 10.0.0.1', 'ipcalc: conflicting output formats: --no-decorate and --format=json'],
-	['FormatInfoWithField', '1', '--format=json -i -m 10.0.0.1', 'ipcalc: -i and --all-info cannot be combined with options that select fields'],
-	['FormatAllInfoWithField', '1', '--format=human --all-info -n 10.0.0.1/24', 'ipcalc: -i and --all-info cannot be combined with options that select fields'],
-	['FormatValueSummary', '1', '--format=value 10.0.0.1/24', 'ipcalc: --format=value needs options that select fields; use --format=shell or --format=json for the summary'],
+	['FormatInfoWithField', '1', '--format=json -i -m 10.0.0.1', 'ipcalc: -i and --all-info cannot be combined with specific field options'],
+	['FormatAllInfoWithField', '1', '--format=human --all-info -n 10.0.0.1/24', 'ipcalc: -i and --all-info cannot be combined with specific field options'],
+	['FormatValueSummary', '1', '--format=value 10.0.0.1/24', 'ipcalc: --format=value needs specific field options; use --format=shell or --format=json'],
 	['FormatShellSplit', '1', '--format=shell -S 26 10.0.0.0/24', 'ipcalc: --format=shell is not supported with --split, --split-hosts or --deaggregate; use --format=value'],
 	['FormatShellDeaggregate', '1', '--format=shell -d 10.0.0.1-10.0.0.9', 'ipcalc: --format=shell is not supported with --split, --split-hosts or --deaggregate; use --format=value'],
 	['FormatJsonEquals', '2', '--format=json 10.0.0.0/8 --equals=10.0.0.0/8', 'ipcalc: --format=json is not supported with --equals, --subnet-of or --overlaps'],
@@ -2476,4 +2544,134 @@ foreach c : [
 	cmd = ipcalc.full_path() + ' ' + c[2]
 	test(c[0], testrunner,
 		args : ['--test-status', c[1], cmd, '--test-output', cmd, c[3]])
+endforeach
+
+# --binary diagram and JSON output: [name, arguments, expected-output file]
+foreach c : [
+	['BitsAddress', '192.168.92.6', 'bits-192.168.92.6'],
+	['BitsHostBits', '192.168.92.6/22', 'bits-192.168.92.6-22'],
+	['BitsPrefix8', '10.0.0.0/8', 'bits-10.0.0.0-8'],
+	['BitsPrefix31', '192.168.1.4/31', 'bits-192.168.1.4-31'],
+	['BitsPrefix1', '128.0.0.0/1', 'bits-128.0.0.0-1'],
+	['BitsPrefix0', '0.0.0.0/0', 'bits-0.0.0.0-0'],
+	['BitsDetails', '192.168.92.6/24', 'bits-192.168.92.6-24'],
+	['BitsAddressHostMin', '192.168.92.1/24', 'bits-192.168.92.1-24'],
+	['BitsAddressBroadcast', '192.168.92.255/24', 'bits-192.168.92.255-24'],
+	['BitsAddressPrefix31', '192.168.1.5/31', 'bits-192.168.1.5-31'],
+	['BitsAddressIPv6', '2001:db8::1', 'bits-2001:db8::1'],
+	['BitsHostBitsIPv6', '2001:db8:abcd:12::1/56', 'bits-2001:db8:abcd:12::1-56'],
+	['BitsPrefix64IPv6', '2001:db8::/64', 'bits-2001:db8::-64'],
+	['BitsPrefix62IPv6', '2001:db8:abcd:10::/62', 'bits-2001:db8:abcd:10::-62'],
+	['BitsPrefix96IPv6', '2001:db8::/96', 'bits-2001:db8::-96'],
+	['BitsPrefix65IPv6', '2001:db8::/65', 'bits-2001:db8::-65'],
+	['BitsPrefix0IPv6', '::/0', 'bits-::-0'],
+	['BitsPrefix127IPv6', '2001:db8::/127', 'bits-2001:db8::-127'],
+	['BitsUniqueLocalIPv6', 'fd10:da05:b5ac::/48', 'bits-fd10:da05:b5ac::-48'],
+	['BitsLinkLocalIPv6', 'fe80::/64', 'bits-fe80::-64'],
+	['BitsLinkLocalPrefix10IPv6', 'fe80::/10', 'bits-fe80::-10'],
+	['BitsMulticastIPv6', 'ff02::/16', 'bits-ff02::-16'],
+	['BitsFormatHuman', '--format=human 192.168.92.6/22', 'bits-192.168.92.6-22'],
+	['BitsJson', '--format=json 192.168.92.0/22', 'bits-json-192.168.92.0-22'],
+	['BitsJsonIPv6', '--format=json 2001:db8::1', 'bits-json-2001:db8::1'],
+	['BitsJsonNetworkIPv6', '--format=json 2001:db8:abcd:12::1/56', 'bits-json-2001:db8:abcd:12::1-56'],
+	['BitsShell', '--format=shell 192.168.92.6/22', 'bits-shell-192.168.92.6-22'],
+	['BitsShellPrefix8', '--format=shell 10.0.0.0/8', 'bits-shell-10.0.0.0-8'],
+	['BitsShellPrefix31', '--format=shell 192.168.1.5/31', 'bits-shell-192.168.1.5-31'],
+	['BitsShellAddress', '--format=shell 192.168.92.6', 'bits-shell-192.168.92.6'],
+	['BitsShellIPv6', '--format=shell 2001:db8:abcd:12::1/56', 'bits-shell-2001:db8:abcd:12::1-56'],
+	['BitsShellAddressIPv6', '--format=shell 2001:db8::1', 'bits-shell-2001:db8::1'],
+]
+	test(c[0], testrunner,
+		args : ['--test-outfile', ipcalc.full_path() + ' --binary ' + c[1], files(c[2])],
+		env : ['COLUMNS=80'])
+endforeach
+
+# --binary diagram with the given COLUMNS: [name, COLUMNS, arguments, expected-output file]
+foreach c : [
+	['BitsWideAddressIPv6', '135', '2001:db8::1', 'bits-wide-2001:db8::1'],
+	['BitsWideHostBitsIPv6', '135', '2001:db8:abcd:12::1/56', 'bits-wide-2001:db8:abcd:12::1-56'],
+	['BitsWidePrefix96IPv6', '200', '2001:db8::/96', 'bits-wide-2001:db8::-96'],
+	['BitsWidePrefix0IPv6', '135', '::/0', 'bits-wide-::-0'],
+	['BitsNarrowIPv6', '134', '2001:db8:abcd:12::1/56', 'bits-2001:db8:abcd:12::1-56'],
+	['BitsColumnsInvalid', 'abc', '2001:db8:abcd:12::1/56', 'bits-2001:db8:abcd:12::1-56'],
+	['BitsColumnsZero', '0', '2001:db8:abcd:12::1/56', 'bits-2001:db8:abcd:12::1-56'],
+	['BitsWideIPv4', '200', '192.168.92.6/22', 'bits-192.168.92.6-22'],
+	['BitsShellPrefix0IPv6', '200', '--format=shell ::/0', 'bits-shell-::-0'],
+]
+	test(c[0], testrunner,
+		args : ['--test-outfile', 'COLUMNS=' + c[1] + ' ' + ipcalc.full_path() + ' --binary ' + c[2],
+			files(c[3])])
+endforeach
+
+# --binary value output: [name, arguments, expected output]
+foreach c : [
+	['BitsAddressValue', '--format=value 192.168.92.6', '11000000101010000101110000000110'],
+	['BitsNetworkValue', '--format=value 192.168.92.6/22', '11000000101010000101110000000000'],
+	['BitsNetmaskValue', '--format=value 192.168.92.6 255.255.252.0', '11000000101010000101110000000000'],
+	['BitsClassPrefixValue', '--format=value --class-prefix 10.1.2.3', '00001010000000000000000000000000'],
+	['BitsPrefix0Value', '--format=value 0.0.0.0/0', '00000000000000000000000000000000'],
+	['BitsNetworkIPv6Value', '--format=value 2001:db8::/32', '00100000000000010000110110111000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'],
+	['BitsAddressIPv6Value', '--format=value 2001:db8::1', '00100000000000010000110110111000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001'],
+	['BitsPrefix0IPv6Value', '--format=value ::/0', '00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'],
+]
+	cmd = ipcalc.full_path() + ' --binary ' + c[1]
+	test(c[0], testrunner,
+		args : ['--test-status', '0', cmd, '--test-output', cmd, c[2]],
+		env : ['COLUMNS=200'])
+endforeach
+
+# --binary invocations with the same output: [name, arguments, same output as]
+foreach c : [
+	['BitsPrefix32Value', '--format=value 192.168.92.6/32', '--format=value 192.168.92.6'],
+	['BitsPrefix32', '192.168.92.6/32', '192.168.92.6'],
+	['BitsJsonLegacy', '-j 192.168.92.0/22', '--format=json 192.168.92.0/22'],
+]
+	test(c[0], testrunner,
+		args : ['--test-equal', ipcalc.full_path() + ' --binary ' + c[1],
+			ipcalc.full_path() + ' --binary ' + c[2]])
+endforeach
+
+# --binary rejects --no-decorate: [name, arguments, expected output]
+foreach c : [
+	['BitsNoDecorate', '--no-decorate 192.168.92.6/22', 'ipcalc: --no-decorate is not supported with --binary; use --format=value'],
+	['BitsJsonNoDecorate', '-j --no-decorate 192.168.92.0/22', 'ipcalc: --no-decorate is not supported with --binary; use --format=value'],
+	['BitsNoDecorateFormatValue', '--no-decorate --format=value 192.168.92.6/22', 'ipcalc: --no-decorate is not supported with --binary; use --format=value'],
+	['BitsNoDecorateSilent', '-s --no-decorate 192.168.92.6/22', ''],
+]
+	cmd = ipcalc.full_path() + ' --binary ' + c[1]
+	test(c[0], testrunner,
+		args : ['--test-status', '1', cmd, '--test-output', cmd, c[2]])
+endforeach
+
+# --binary rejected inputs and combinations: [name, expected exit status, arguments]
+foreach c : [
+	['BitsBadAddress', '1', '1.2.3.400'],
+	['BitsBadPrefixIPv4', '1', '1.2.3.4/33'],
+	['BitsBadPrefixIPv6', '1', '2001:db8::/129'],
+	['BitsForcedFamily', '1', '-6 1.2.3.4'],
+	['Bits-Info', '1', '-i 10.0.0.0/8'],
+	['Bits-AllInfo', '1', '--all-info 10.0.0.0/8'],
+	['Bits-Network', '1', '-n 10.0.0.0/8'],
+	['Bits-Cidr', '1', '--cidr 10.0.0.0/8'],
+	['Bits-Check', '1', '-c 10.0.0.0/8'],
+	['Bits-Split', '1', '-S 24 10.0.0.0/8'],
+	['Bits-SplitHosts', '1', '--split-hosts=10 10.0.0.0/8'],
+	['Bits-Deaggregate', '1', '-d 10.0.0.0-10.0.0.255'],
+	['Bits-Random', '1', '-r 24'],
+	['Bits-Equals', '2', '10.0.0.0/8 --equals=10.0.0.0/8'],
+	['BitsFormatConflict', '1', '-j --format=shell 10.0.0.0/8'],
+]
+	test(c[0], testrunner,
+		args : ['--test-status', c[1], ipcalc.full_path() + ' --binary ' + c[2]])
+endforeach
+
+# --all-info does not show the bits
+foreach c : [
+	['AllInfoNoBits', '--all-info 192.168.92.6/22'],
+	['AllInfoNoBitsJson', '--all-info --format=json 192.168.92.6/22'],
+	['AllInfoNoBitsShell', '--all-info --format=shell 2001:db8::1/56'],
+]
+	test(c[0], testrunner,
+		args : ['--test-success', 'out=$(' + ipcalc.full_path() + ' ' + c[1] +
+			') && ! echo "$out" | grep -qi bits'])
 endforeach

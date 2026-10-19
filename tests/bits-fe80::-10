@@ -1,0 +1,6 @@
+Network:    fe80::/10
+
+       fe80-febf:       0000-ffff:       0000-ffff:       0000-ffff
+1111111010xxxxxx:xxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxxx
+└─ /10 ──┘└─────────────────────── host 118 ───────────────────────
+bits 64-127: host, all x

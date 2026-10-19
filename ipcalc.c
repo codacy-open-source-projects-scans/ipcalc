@@ -672,11 +672,8 @@ int get_ipv4_info(const char *ipStr, int prefix, ip_info_st * info,
 
 	ipv4_prefix_to_hosts(info->hosts, sizeof(info->hosts), prefix);
 
-#ifdef USE_MAXMIND
-	if (flags & FLAG_GET_GEOIP) {
-		geo_ip_lookup(ipStr, &info->geoip_country, &info->geoip_ccode, &info->geoip_city, &info->geoip_coord);
-	}
-#endif
+	if (flags & FLAG_GET_GEOIP)
+		geo_ip_lookup(ipStr, prefix, &info->geo);
 
 	/* show_info_fields() rejects a network without the lookup */
 	if ((flags & FLAG_RESOLVE_HOST) && prefix == 32) {
@@ -946,11 +943,8 @@ int get_ipv6_info(const char *ipStr, int prefix, ip_info_st * info,
 
 	ipv6_prefix_to_hosts(info->hosts, sizeof(info->hosts), prefix);
 
-#ifdef USE_MAXMIND
-	if (flags & FLAG_GET_GEOIP) {
-		geo_ip_lookup(ipStr, &info->geoip_country, &info->geoip_ccode, &info->geoip_city, &info->geoip_coord);
-	}
-#endif
+	if (flags & FLAG_GET_GEOIP)
+		geo_ip_lookup(ipStr, prefix, &info->geo);
 
 	/* show_info_fields() rejects a network without the lookup */
 	if ((flags & FLAG_RESOLVE_HOST) && prefix == 128) {
@@ -1165,6 +1159,7 @@ static int parse_split_hosts(unsigned flags, const char *str,
 #define OPT_CIDR 15
 #define OPT_WILDCARD 16
 #define OPT_FORMAT 17
+#define OPT_BINARY 18
 
 #define IS_COMPARE_OPT(c) ((c) == OPT_EQUALS || (c) == OPT_SUBNET_OF || (c) == OPT_OVERLAPS)
 
@@ -1183,6 +1178,7 @@ static const struct option long_options[] = {
 	{"split", 1, 0, 'S'},
 	{"split-hosts", 1, 0, OPT_SPLIT_HOSTS},
 	{"deaggregate", 1, 0, 'd'},
+	{"binary", 0, 0, OPT_BINARY},
 	{"info", 0, 0, 'i'},
 	{"all-info", 0, 0, OPT_ALLINFO},
 	{"ipv4", 0, 0, '4'},
@@ -1271,6 +1267,8 @@ void usage(unsigned verbose)
 		fprintf(stderr, "      --split-hosts=N1,N2,...     Split the provided network into subnets\n");
 		fprintf(stderr, "                                  that hold N1, N2, ... hosts\n");
 		fprintf(stderr, "  -d, --deaggregate=IP1-IP2       Deaggregate the provided address range\n");
+		fprintf(stderr, "      --binary                    Print the bits of the provided address\n");
+		fprintf(stderr, "                                  or of the network part of a network\n");
 		fprintf(stderr, "  -i, --info                      Print information on the provided IP address\n");
 		fprintf(stderr, "                                  (default)\n");
 		fprintf(stderr, "      --all-info                  Print verbose information on the provided IP\n");
@@ -1327,7 +1325,7 @@ void usage(unsigned verbose)
 		fprintf(stderr, "        [--minaddr] [--maxaddr] [--addresses] [--addrspace]\n");
 		fprintf(stderr, "        [--format=FORMAT]\n");
 		fprintf(stderr, "        [-s|--silent] [-v|--version] [--reverse-dns] [--class-prefix]\n");
-		fprintf(stderr, "        [-?|--help] [--usage]\n");
+		fprintf(stderr, "        [--binary] [-?|--help] [--usage]\n");
 	}
 }
 
@@ -1389,6 +1387,17 @@ color_printf(const char *color, const char *title, const char *fmt, ...)
 	va_end(args);
 
 	return;
+}
+
+/* Prints str without a newline; the color is skipped when color is NULL
+ * or colors are disabled */
+void color_fputs(const char *color, const char *str)
+{
+	if (colors && color)
+		fputs(color, stdout);
+	fputs(str, stdout);
+	if (colors && color)
+		fputs(KRESET, stdout);
 }
 
 void va_color_printf(const char *color, const char *title, const char *fmt, va_list varglist)
@@ -1586,17 +1595,18 @@ dist_printf(unsigned * const jsonfirst, const char *title, const char *jsontitle
 #define MINADDR_NAME "MINADDR"
 #define MAXADDR_NAME "MAXADDR"
 #define ADDRESSES_NAME "ADDRESSES"
+#define CONTINENT_NAME "CONTINENT"
 #define COUNTRYCODE_NAME "COUNTRYCODE"
 #define COUNTRY_NAME "COUNTRY"
 #define CITY_NAME "CITY"
+#define POSTALCODE_NAME "POSTALCODE"
 #define COORDINATES_NAME "COORDINATES"
-
-enum output_format {
-	FORMAT_HUMAN,	/* titled lines, colored on a terminal */
-	FORMAT_SHELL,	/* NAME=value */
-	FORMAT_JSON,
-	FORMAT_VALUE	/* values only */
-};
+#define ACCURACYRADIUS_NAME "ACCURACYRADIUS"
+#define TIMEZONE_NAME "TIMEZONE"
+#define ASN_NAME "ASN"
+#define ASORG_NAME "ASORG"
+#define ASNETWORK_NAME "ASNETWORK"
+#define GEONETWORK_NAME "GEONETWORK"
 
 static const char * const format_names[] = {
 	[FORMAT_HUMAN] = "human",
@@ -1834,6 +1844,7 @@ static void show_info_fields(const ip_info_st *info, enum output_format format,
 				    (randomized || strcmp(info->network, info->ip) == 0);
 	char prefix[8];
 	char *cidr = NULL, *full_network = NULL, *netmask = NULL, *hosts = NULL;
+	char *radius = NULL;
 	unsigned jsonchain = JSON_FIRST;
 	enum summary_section section = SECTION_NETWORK;
 	unsigned i;
@@ -1845,6 +1856,8 @@ static void show_info_fields(const ip_info_st *info, enum output_format format,
 		safe_asprintf(&full_network, "%s/%u", info->expanded_network, info->prefix);
 	if ((flags & FLAG_IPV6) && info->prefix < 112)
 		safe_asprintf(&hosts, "2^(%u) = %s", 128 - info->prefix, info->hosts);
+	if (info->geo.accuracy_radius)
+		safe_asprintf(&radius, "%s km", info->geo.accuracy_radius);
 
 	const struct output_field fields[] = {
 		{ .title = "Full Address:\t", .name = FULL_ADDRESS_NAME, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIDE_FOR_NETWORK_ADDRESS, .value = info->expanded_ip },
@@ -1869,10 +1882,18 @@ static void show_info_fields(const ip_info_st *info, enum output_format format,
 		{ .title = "HostMax:\t", .name = MAXADDR_NAME, .option = FLAG_SHOW_MAXADDR, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIDE_FOR_SINGLE_ADDRESS, .section = SECTION_RANGE, .value = info->hostmax },
 		{ .title = "Hosts/Net:\t", .name = ADDRESSES_NAME, .option = FLAG_SHOW_ADDRESSES, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIDE_FOR_SINGLE_ADDRESS|ATTR_VALUE_QUOTE_IF_SPACE, .section = SECTION_RANGE, .value = info->hosts[0] ? info->hosts : NULL, .text_value = hosts },
 		/* geo values exist only when looked up, with -g or --all-info */
-		{ .title = "Country code:\t", .name = COUNTRYCODE_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_GEO, .value = info->geoip_ccode },
-		{ .title = "Country:\t", .name = COUNTRY_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT|ATTR_VALUE_QUOTE_IF_SPACE, .section = SECTION_GEO, .value = info->geoip_country },
-		{ .title = "City:\t\t", .name = CITY_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT|ATTR_VALUE_QUOTE_IF_SPACE, .section = SECTION_GEO, .value = info->geoip_city },
-		{ .title = "Coordinates:\t", .name = COORDINATES_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT|ATTR_VAR_QUOTE_ALWAYS, .section = SECTION_GEO, .value = info->geoip_coord },
+		{ .title = "Continent:\t", .name = CONTINENT_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT|ATTR_VALUE_QUOTE_IF_SPACE, .section = SECTION_GEO, .value = info->geo.continent },
+		{ .title = "Country code:\t", .name = COUNTRYCODE_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_GEO, .value = info->geo.ccode },
+		{ .title = "Country:\t", .name = COUNTRY_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT|ATTR_VALUE_QUOTE_IF_SPACE, .section = SECTION_GEO, .value = info->geo.country },
+		{ .title = "City:\t\t", .name = CITY_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT|ATTR_VALUE_QUOTE_IF_SPACE, .section = SECTION_GEO, .value = info->geo.city },
+		{ .title = "Postal code:\t", .name = POSTALCODE_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT|ATTR_VALUE_QUOTE_IF_SPACE, .section = SECTION_GEO, .value = info->geo.postal_code },
+		{ .title = "Coordinates:\t", .name = COORDINATES_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT|ATTR_VAR_QUOTE_ALWAYS, .section = SECTION_GEO, .value = info->geo.coord },
+		{ .title = "Accuracy:\t", .name = ACCURACYRADIUS_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_GEO, .value = info->geo.accuracy_radius, .text_value = radius },
+		{ .title = "Time zone:\t", .name = TIMEZONE_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_GEO, .value = info->geo.time_zone },
+		{ .title = "Routed by AS:\t", .name = ASN_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_GEO, .value = info->geo.asn },
+		{ .title = "Operated by:\t", .name = ASORG_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT|ATTR_VALUE_QUOTE_IF_SPACE, .section = SECTION_GEO, .value = info->geo.as_org },
+		{ .title = "AS network:\t", .name = ASNETWORK_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_GEO, .value = info->geo.as_network },
+		{ .title = "Geo network:\t", .name = GEONETWORK_NAME, .option = FLAG_SHOW_GEOIP, .attrs = ATTR_SUMMARY_ALWAYS|ATTR_SUMMARY_HIGHLIGHT, .section = SECTION_GEO, .value = info->geo.network },
 	};
 	const unsigned nfields = sizeof(fields) / sizeof(fields[0]);
 	const struct output_field *f;
@@ -1910,6 +1931,7 @@ static void show_info_fields(const ip_info_st *info, enum output_format format,
 	free(full_network);
 	free(netmask);
 	free(hosts);
+	free(radius);
 }
 
 /* The format implied by -j, --no-decorate and the selection, when no
@@ -1960,7 +1982,7 @@ static int select_format(const char *name, const char *other_name,
 		*selected_fields &= ~FLAG_RESOLVE_IP;
 		if (*selected_fields) {
 			if (!beSilent)
-				fprintf(stderr, "ipcalc: -i and --all-info cannot be combined with options that select fields\n");
+				fprintf(stderr, "ipcalc: -i and --all-info cannot be combined with specific field options\n");
 			return -1;
 		}
 	}
@@ -1993,7 +2015,7 @@ static int check_format_for_app(enum output_format format, enum app_t app)
 	if ((app & ~APP_SHOW_INFO) == 0 && format == FORMAT_VALUE &&
 	    (flags & FLAG_SHOW_MODERN_INFO)) {
 		if (!beSilent)
-			fprintf(stderr, "ipcalc: --format=value needs options that select fields; use --format=shell or --format=json for the summary\n");
+			fprintf(stderr, "ipcalc: --format=value needs specific field options; use --format=shell or --format=json\n");
 		return -1;
 	}
 	return 0;
@@ -2061,6 +2083,7 @@ int main(int argc, char **argv)
 	enum output_format format;
 	const char *formatStr = NULL, *otherFormatStr = NULL;
 	int badOption = 0;
+	int noDecorate = 0;
 
 	while (1) {
 		int c = getopt_long(argc, argv, "S:cr:i46abho:" GEO_SHORT_OPTION "mnpjsvd:", long_options, NULL);
@@ -2098,6 +2121,9 @@ int main(int argc, char **argv)
 				if (splitHostsStrs[nsplitHosts] == NULL) exit(exit_failure);
 				nsplitHosts++;
 				break;
+			case OPT_BINARY:
+				app |= APP_SHOW_BITS;
+				break;
 			case 'd':
 				app |= APP_DEAGGREGATE;
 				ipStr = safe_strdup(optarg);
@@ -2133,6 +2159,7 @@ int main(int argc, char **argv)
 				break;
 			case OPT_NO_DECORATE:
 				flags |= FLAG_NO_DECORATE;
+				noDecorate = 1;
 				break;
 			case 'j':
 				flags |= FLAG_JSON;
@@ -2230,6 +2257,13 @@ int main(int argc, char **argv)
 		return exit_failure;
 	}
 
+	/* FLAG_NO_DECORATE is also set by --format=value and cleared by -j */
+	if (noDecorate && (app & APP_SHOW_BITS)) {
+		if (!beSilent)
+			fprintf(stderr, "ipcalc: --no-decorate is not supported with --binary; use --format=value\n");
+		return exit_failure;
+	}
+
 	if (formatStr && check_format_for_app(format, app) < 0)
 		return exit_failure;
 	if (!formatStr)
@@ -2264,6 +2298,7 @@ int main(int argc, char **argv)
 	case APP_CHECK_ADDRESS:
 	case APP_COMPARE:
 	case APP_SHOW_INFO:
+	case APP_SHOW_BITS:
 		/* These are handled lower into the info app */
 		break;
 	}
@@ -2415,7 +2450,10 @@ int main(int argc, char **argv)
 	if ((isatty(STDOUT_FILENO) != 0) && (getenv("NO_COLOR") == 0))
 		colors = 1;
 
-	show_info_fields(&info, format, randomStr != NULL);
+	if (app == APP_SHOW_BITS)
+		show_binary(&info, flags, format);
+	else
+		show_info_fields(&info, format, randomStr != NULL);
 
 	return 0;
 }

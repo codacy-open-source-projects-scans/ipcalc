@@ -1,19 +1,20 @@
 project('ipcalc', 'c',
 	license : 'GPLv2',
-	version : '1.1.0'
+	version : '1.2.0'
 )
 
-src = [
+src = files(
 	'ipcalc.h',
 	'ipcalc.c',
 	'ipcalc-reverse.c',
 	'ipcalc-utils.c',
 	'netsplit.c',
 	'netcompare.c',
+	'binary.c',
 	'ipv6.h',
 	'ipv6.c',
 	'deaggregate.c'
-]
+)
 
 args = [
 	'-DVERSION="' + meson.project_version() + '"'
@@ -33,7 +34,7 @@ maxminddb = dependency('libmaxminddb',
 	required : use_maxminddb
 )
 if maxminddb.found()
-	src += ['ipcalc-maxmind.c']
+	src += files('ipcalc-maxmind.c')
 	args += ['-DUSE_MAXMIND']
 	have_geo = true
 	if dl.found()

@@ -22,7 +22,7 @@ endif # MAXMIND
 
 all: ipcalc
 
-ipcalc: ipcalc.c ipv6.c deaggregate.c ipcalc-maxmind.c ipcalc-reverse.c ipcalc-utils.c netsplit.c netcompare.c
+ipcalc: ipcalc.c ipv6.c deaggregate.c ipcalc-maxmind.c ipcalc-reverse.c ipcalc-utils.c netsplit.c netcompare.c binary.c
 	$(CC) $(CFLAGS) -DVERSION="\"$(VERSION)\"" $^ -o $@ $(LDFLAGS)
 
 clean:

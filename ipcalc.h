@@ -22,17 +22,31 @@
 
 #include <stdarg.h> /* for va_list */
 
+struct geo_info_st {
+	char *continent;
+	char *country;
+	char *ccode;
+	char *city;
+	char *postal_code;
+	char *coord;
+	char *accuracy_radius;	/* of coord, in km */
+	char *time_zone;
+	char *asn;
+	char *as_org;
+	char *as_network;	/* of the ASN record */
+	char *network;		/* of the records the values come from */
+};
+
 #ifdef USE_MAXMIND
-  void geo_ip_lookup(const char *ip, char **country, char **ccode, char **city, char  **coord);
+  void geo_ip_lookup(const char *ip, unsigned prefix, struct geo_info_st *geo);
   int geo_setup(void);
 # ifndef USE_RUNTIME_LINKING
 #   define geo_setup() 0
 # endif
 #else
-# define geo_ipv4_lookup(x,y,z,w,a)
-# define geo_ipv6_lookup(x,y,z,w,a)
+# define geo_ip_lookup(ip, prefix, geo)
 # define geo_setup() -1
-#endif
+#endif /* USE_MAXMIND */
 
 int __attribute__((__format__(printf, 2, 3))) safe_asprintf(char **strp, const char *fmt, ...);
 char __attribute__((warn_unused_result)) *safe_strdup(const char *str);
@@ -63,10 +77,7 @@ typedef struct ip_info_st {
 	char *netmask;
 	char *wildcard;	/* ipv4 only */
 	char *hostname;
-	char *geoip_country;
-	char *geoip_ccode;
-	char *geoip_city;
-	char *geoip_coord;
+	struct geo_info_st geo;
 	char hosts[64];		/* number of hosts in text */
 	unsigned prefix;
 
@@ -89,7 +100,8 @@ enum app_t {
 	APP_SHOW_INFO=1<<2,
 	APP_SPLIT=1<<3,
 	APP_DEAGGREGATE=1<<4,
-	APP_COMPARE=1<<5
+	APP_COMPARE=1<<5,
+	APP_SHOW_BITS=1<<6
 };
 
 /* Bits of the global flags: options to show a field (FLAG_SHOW_*, FLAG_RESOLVE_*)
@@ -121,6 +133,13 @@ enum ipcalc_flag {
 	FLAG_SHOW_WILDCARD=1<<24,
 };
 
+enum output_format {
+	FORMAT_HUMAN,	/* titled lines, colored on a terminal */
+	FORMAT_SHELL,	/* NAME=value */
+	FORMAT_JSON,
+	FORMAT_VALUE	/* values only */
+};
+
 /* A split request: count subnets of size /prefix. A count of zero makes it
  * the fill request, which takes all the remaining space. When hosts is
  * non-zero, the request is for one subnet of that many hosts; the requests
@@ -136,6 +155,8 @@ void show_split_networks(const struct split_req *reqs, unsigned nreqs,
 void output_separate(unsigned * const jsonfirst);
 
 void deaggregate(char *str, unsigned flags);
+
+void show_binary(const ip_info_st *info, unsigned flags, enum output_format format);
 
 int get_ipv4_info(const char *ipStr, int prefix, ip_info_st * info, unsigned flags);
 int get_ipv6_info(const char *ipStr, int prefix, ip_info_st * info, unsigned flags);
@@ -154,6 +175,7 @@ int compare_networks(enum net_comparison op, const ip_info_st *network, unsigned
 
 #define KBLUE  "\x1B[34m"
 #define KMAG   "\x1B[35m"
+#define KDIM   "\x1B[2m"
 #define KRESET "\033[0m"
 
 #define JSON_FIRST 0
@@ -168,6 +190,7 @@ void
 __attribute__ ((format(printf, 3, 4)))
 json_printf(unsigned * const jsonfirst, const char *jsontitle, const char *fmt, ...);
 void va_color_printf(const char *color, const char *title, const char *fmt, va_list varglist);
+void color_fputs(const char *color, const char *str);
 void va_json_printf(unsigned  * const jsonfirst, const char *jsontitle, const char *fmt, va_list varglist);
 
 void

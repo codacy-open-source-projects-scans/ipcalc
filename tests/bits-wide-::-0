@@ -1,0 +1,5 @@
+Network:    ::/0
+
+       0000-ffff:       0000-ffff:       0000-ffff:       0000-ffff:       0000-ffff:       0000-ffff:       0000-ffff:       0000-ffff
+xxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxxx
+└───────────────────────────────────────────────────────────── host 128 ──────────────────────────────────────────────────────────────┘

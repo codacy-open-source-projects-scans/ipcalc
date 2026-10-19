@@ -172,8 +172,8 @@ Canonical ipcalc hypotheses to consider first:
 
 - Write the reproducing test first (`tests/meson.build` plus an
   expected-output file) and confirm it fails on the unfixed code.
-- Cite the violated `REQ-*` in the commit message, or add the missing
-  requirement first.
+- If no requirement covers the correct behavior, add it first; do not
+  cite `REQ-*` IDs in the commit message.
 - Add a user-visible entry to `NEWS`.
 
 <!-- END ipcalc extensions -->

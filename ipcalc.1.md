@@ -28,8 +28,8 @@ The **--format**=_FORMAT_ option selects one of these formats:
 * **human**
   Titled lines, as in the summary. Colors are used only when the output
   is a terminal and the NO_COLOR environment variable is not set. This
-  is the default for the summary and for **--split**, **--split-hosts**
-  and **--deaggregate**.
+  is the default for the summary and for **--split**, **--split-hosts**,
+  **--deaggregate** and **--binary**.
 
 * **shell**
   **VAR=VALUE** lines that can be passed to the shell's eval; a value
@@ -46,11 +46,8 @@ The **--format**=_FORMAT_ option selects one of these formats:
 Each format applies to whatever is selected: the summary, or exactly
 the values of the specific info options, e.g.,
 "ipcalc --format=json -n -m 192.168.1.5/24" prints only NETWORK and
-NETMASK. The summary has no **value** form. **--info** and
-**--all-info** cannot be combined with specific info options, except
-**--lookup-host**, which then provides the address of the summary.
-**--split**, **--split-hosts** and **--deaggregate** accept **human**,
-**json** and **value**; the comparison options accept only **human**.
+NETMASK. The specific info options accept all four formats; the
+formats each operation accepts are given in its description.
 
 Scripts should always pass **--format**, so that their output does not
 depend on the defaults.
@@ -62,7 +59,7 @@ depend on the defaults.
   Checks whether this is a valid IP address. When an IP family is specified
   only the addresses of that family are accepted. A zero exit status
   indicates a well formed address and a non-zero exit status indicates a
-  malformed address.
+  malformed address. **--format** is ignored.
 
 * **--equals**=NET, **--subnet-of**=NET, **--overlaps**=NET
   Compare the provided network with NET and print the result, such as
@@ -78,6 +75,7 @@ depend on the defaults.
   compare true. The exit status is 0 when the comparison holds, 1 when it
   does not, and 2 on any error, such as a malformed address. Only one
   comparison may be given, and not together with **--check**.
+  The only format accepted is **human**.
   Example "ipcalc 192.168.0.1/24 --subnet-of=192.168.0.0/23".
 
 * **-i**, **--info**
@@ -85,12 +83,15 @@ depend on the defaults.
   in a short summary, plus the fields of any specific info options given
   (e.g., **--reverse-dns**).
   This is the default option if no other options are provided.
+  The formats accepted are **human**, **shell** and **json**; with
+  **--format**, the specific info options other than **--lookup-host**
+  cannot be given.
 
 * **--all-info**
   Display all the information ipcalc can determine on the provided network and
   addresses in human readable format, which may be long. That includes
   geographic information, but not the hostname, which requires a DNS lookup
-  (see **--hostname**).
+  (see **--hostname**). The formats accepted are as for **--info**.
 
   For an IPv6 unicast address it also prints the interface identifier, i.e.,
   the low 64 bits of the address, unless they are all zero or the address
@@ -104,8 +105,9 @@ depend on the defaults.
 
 * **-S**, **--split**=[COUNT:]PREFIX
   Split the provided network using the specified prefix or netmask. That is,
-  split up the network into smaller chunks of a specified prefix. With
-  **--format=value**, only the split networks are printed, one per line.
+  split up the network into smaller chunks of a specified prefix. The
+  formats accepted are **human**, **json** and **value**; with
+  **value**, only the split networks are printed, one per line.
   Example "ipcalc -S 26 192.168.1.0/24".
 
   The option can be repeated to split the network into subnets of different
@@ -129,14 +131,35 @@ depend on the defaults.
   the Debian ipcalc (its **-s** option), except that IPv6 networks are
   supported, a host count of 0 is rejected, and if the network is too
   small for the requests, nothing is printed and the exit status is 1.
-  It cannot be combined with **--split**.
+  It cannot be combined with **--split**. The formats accepted are as for
+  **--split**.
   Example "ipcalc --split-hosts=10,20,30 192.168.0.0/24".
 
 * **-d**, **--deaggregate**
   Deaggregates the provided address range. That is, print the networks that
   cover the range. The range is given using the '-' separator, e.g.,
-  "192.168.1.3-192.168.1.23". With **--format=value**, only the networks
-  are printed, one per line.
+  "192.168.1.3-192.168.1.23". The formats accepted are **human**,
+  **json** and **value**; with **value**, only the networks are printed,
+  one per line.
+
+* **--binary**
+  Displays the bits of the provided address or, when a prefix is given,
+  the bits of the network part of the network; any host bits set in the
+  address are ignored. By default it prints each octet of an IPv4
+  address, or each 16-bit group of an IPv6 address, above its bits,
+  marks the host bits with 'x', and brackets the network and host parts
+  with UTF-8 box-drawing characters. An IPv6 address is printed in two
+  halves, or on a single line when the output is at least 135 columns
+  wide (see **COLUMNS**). All four formats are accepted; with
+  **value**, only the bits of the network are printed, as in
+  NETWORK, e.g., "11000000101010000000000000000000" for 192.168.0.0/16.
+  The variables exposed are the
+  addresses of the output, each as all of its bits: ADDRESS when no
+  prefix shorter than the address is given; otherwise PREFIX followed,
+  for IPv4, by ADDRESS, NETMASK, NETWORK, HOSTMIN, HOSTMAX and BROADCAST
+  (for a /31, without NETWORK and BROADCAST), and for IPv6 by NETWORK.
+  The bits are not part of the summary, and the option cannot be combined
+  with other operations or with the specific info options.
 
 * **-r**, **--random-private**
   Generate a random private address using the supplied prefix or mask. By default
@@ -171,8 +194,30 @@ depend on the defaults.
 * **-g**, **--geoinfo**
   Display geographic information for the given IP address. This option
   requires libmaxminddb to be available, and is not accepted
-  when ipcalc is built without it. The variables exposed are
-  COUNTRYCODE, COUNTRY, CITY and COORDINATES (when available).
+  when ipcalc is built without it. The variables exposed are CONTINENT,
+  COUNTRYCODE, COUNTRY, CITY, POSTALCODE, COORDINATES (latitude,longitude),
+  ACCURACYRADIUS, TIMEZONE (e.g., Europe/Athens), ASN, ASORG, ASNETWORK
+  and GEONETWORK (when available). ASN is the number of the autonomous
+  system that routes the address on the Internet, i.e., the network of a
+  single operator such as an ISP, a hosting provider or a company, and
+  ASORG is the name of the organization that operates it (e.g., ASN=1241
+  and ASORG=Forthnet; "Routed by AS" and "Operated by" in the summary).
+  They come from the GeoLite2 ASN database, when it is installed.
+  ASNETWORK is the network, in CIDR notation, for which that database
+  holds them; as the database is built from routing data, it
+  approximates the network the autonomous system announces, e.g., the
+  allocation of the ISP to which the address belongs.
+  GEONETWORK
+  is the network, in CIDR notation, for which the database holds the
+  printed values. When the database has no country for
+  the address, COUNTRY and COUNTRYCODE are the country its users
+  represent (e.g., for a military base) or, without one, the country in
+  which the network is registered. ACCURACYRADIUS is the accuracy of
+  COORDINATES, as a radius in **kilometers** around them within which the
+  address is likely to be. The summary output prints it with its unit,
+  e.g., "Accuracy: 200 km".
+  For a network, a value is printed only when the database knows it for
+  the whole network, not just for the given address.
 
 * **-m**, **--netmask**
   Calculate the netmask for the given IP address. If no mask or prefix
@@ -248,7 +293,7 @@ terminal, ipcalc prints a hint that names the replacement.
 * **-j**, **--json**
   Print the summary as a JSON object, even when specific info options
   are given, which only add their values to it; with **--split**,
-  **--split-hosts** and **--deaggregate** print JSON, and with the
+  **--split-hosts**, **--deaggregate** and **--binary** print JSON, and with the
   comparison options print nothing. Use **--format=json**, which prints
   only the selected values.
 
@@ -256,7 +301,8 @@ terminal, ipcalc prints a hint that names the replacement.
   Print the values of the specific info options, or the networks of
   **--split**, **--split-hosts** and **--deaggregate**, without titles;
   print the summary without colors; and with the comparison options
-  print nothing. It is ignored when **-j** is given. Use
+  print nothing. It is ignored when **-j** is given, and cannot be
+  used with **--binary**. Use
   **--format=value**, or for the summary **--format=human** with the
   NO_COLOR environment variable set.
 
@@ -266,6 +312,13 @@ terminal, ipcalc prints a hint that names the replacement.
 * **NO_COLOR**
   When set, to any value, the **human** format is printed without colors,
   even on a terminal.
+
+* **COLUMNS**
+  The width of the output in columns. With **--binary**, an IPv6
+  address is printed on a single line when it is 135 or more, and in two
+  halves otherwise, e.g., "COLUMNS=135 ipcalc --binary 2001:db8::/48".
+  When unset, the width of the terminal is used, or 80 when the output
+  is not a terminal.
 
 
 ## Examples
@@ -416,6 +469,22 @@ terminal, ipcalc prints a hint that names the replacement.
     2001:db8:1c88:6041::/64
     ...
     2001:db8:1c88:60ff::/64
+
+### Display the bits of a network
+
+    $ ipcalc --binary 192.168.92.6/22
+    Network:    192.168.92.0/22
+
+                                      192.     168.   92-95.   0-255
+                                 11000000.10101000.010111xx.xxxxxxxx
+                                 └──── network /22 ─────┘└ host 10 ┘
+
+    Address:    192.168.92.6     11000000.10101000.01011100.00000110
+    Netmask:    255.255.252.0    11111111.11111111.11111100.00000000
+    Network:    192.168.92.0     11000000.10101000.01011100.00000000
+    HostMin:    192.168.92.1     11000000.10101000.01011100.00000001
+    HostMax:    192.168.95.254   11000000.10101000.01011111.11111110
+    Broadcast:  192.168.95.255   11000000.10101000.01011111.11111111
 
 ### Check whether a network is a subnet of another
 

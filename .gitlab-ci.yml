@@ -8,7 +8,7 @@ stages:
   - saas-linux-small-amd64
   before_script:
 #in F34 rubygem-ronn got replaced by rubygem-ronn-ng
-    - dnf install -y libmaxminddb-devel make meson ninja-build gcc libasan libubsan geolite2-{city,country} rubygem-ronn jq perl-interpreter perl-bignum
+    - dnf install -y libmaxminddb-devel make meson ninja-build gcc libasan libubsan geolite2-{asn,city,country} rubygem-ronn jq perl-interpreter perl-bignum
 
 fedora.nogeo:
   stage: generate

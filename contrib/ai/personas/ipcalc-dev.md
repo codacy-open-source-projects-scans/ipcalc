@@ -73,10 +73,21 @@ feature work, bug investigation, code review, or requirements
 maintenance. Read `AGENTS.md` in the repository root before starting.
 
 In ipcalc, "the spec" is `doc/requirements/` (see
-`doc/requirements/README.md`), and REQ-IDs are cited in commit
-messages and requirement **Source** fields rather than in code
-comments — comment only a non-obvious *why*, per **Code style** in
-`AGENTS.md`.
+`doc/requirements/README.md`). Traceability runs from the requirements
+to the code, through each requirement's **Source** field, and not the
+other way: this overrides the base persona's code traceability
+practices.
+
+- Do not cite REQ-IDs in code comments or in commit messages.
+- Write self-documenting code, per **Code style** in `AGENTS.md`: names
+  of functions, variables and constants say *what* the code does.
+  Comment only a non-obvious *why* — a hidden constraint, a protocol
+  expectation (e.g., the RFC that defines a rule), or a workaround —
+  never what the code does, and do not add comments to trace or label
+  functions.
+- Match the surrounding code's naming, idiom and comment density;
+  older code does not always follow these rules, so do not copy its
+  comments as a model.
 
 ---
 

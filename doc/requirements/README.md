@@ -34,6 +34,7 @@ written.
 | `info.md` | `REQ-INFO-` | Address/network parsing and the computed fields of info and check modes: network, broadcast, host range, counts, class, address space, reverse DNS, hostname lookups | `ipcalc.c` (`get_ipv4_info()`, `get_ipv6_info()`), `ipv6.c`, `ipcalc-reverse.c` |
 | `split.md` | `REQ-SPLIT-` | `-S/--split`, `--split-hosts` | `netsplit.c` (`show_split_networks()`), `ipcalc.c` (`main()`, `parse_split_req()`, `parse_split_hosts()`, `str_to_prefix()`) |
 | `deaggregate.md` | `REQ-DEAGG-` | `-d/--deaggregate` | `deaggregate.c` |
+| `binary.md` | `REQ-BINARY-` | `--binary`: binary form of an address or network | `binary.c` (`show_binary()`), `ipcalc.c` (`main()`) |
 | `random.md` | `REQ-RANDOM-` | `-r/--random-private` network generation | `ipcalc.c` (`generate_ip_network()`) |
 | `geo.md` | `REQ-GEO-` | Geo-IP output and behavior per backend, including no backend | `ipcalc-maxmind.c`, `ipcalc.h` |
 

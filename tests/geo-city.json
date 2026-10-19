@@ -1,0 +1,26 @@
+{
+	"database_type": "GeoLite2-City",
+	"networks": {
+		"192.0.2.0/24": {
+			"city": { "names": { "en": "Athens" } },
+			"continent": { "code": "EU", "names": { "en": "Europe" } },
+			"country": { "iso_code": "GR", "names": { "en": "Greece" } },
+			"location": { "accuracy_radius": 200, "latitude": 37.9842, "longitude": 23.7353, "time_zone": "Europe/Athens" },
+			"postal": { "code": "105 52" },
+			"registered_country": { "iso_code": "GR", "names": { "en": "Greece" } }
+		},
+		"198.51.100.0/24": {
+			"continent": { "code": "NA", "names": { "en": "North America" } },
+			"location": { "accuracy_radius": 1000, "latitude": 37.751, "longitude": -97.822, "time_zone": "America/Chicago" },
+			"registered_country": { "iso_code": "US", "names": { "en": "United States" } }
+		},
+		"2001:db8::/48": {
+			"city": { "names": { "en": "Berlin" } },
+			"continent": { "code": "EU", "names": { "en": "Europe" } },
+			"country": { "iso_code": "DE", "names": { "en": "Germany" } },
+			"location": { "accuracy_radius": 50, "latitude": 52.5196, "longitude": 13.4069, "time_zone": "Europe/Berlin" },
+			"postal": { "code": "10115" },
+			"registered_country": { "iso_code": "DE", "names": { "en": "Germany" } }
+		}
+	}
+}

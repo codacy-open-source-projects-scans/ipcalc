@@ -1,0 +1,11 @@
+Network:	192.0.0.0/16
+Netmask:	255.255.0.0 = 16
+Wildcard:	0.0.255.255
+Broadcast:	192.0.255.255
+Reverse DNS:	0.192.in-addr.arpa.
+
+Address space:	Internet
+Address class:	Class C
+HostMin:	192.0.0.1
+HostMax:	192.0.255.254
+Hosts/Net:	65534

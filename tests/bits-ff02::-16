@@ -1,0 +1,6 @@
+Network:    ff02::/16
+
+            ff02:       0000-ffff:       0000-ffff:       0000-ffff
+1111111100000010:xxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxxx
+└ network /16 ─┘ └─────────────────── host 112 ────────────────────
+bits 64-127: host, all x

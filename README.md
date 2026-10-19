@@ -6,7 +6,9 @@ as well as a tool suitable to be used by scripts or other programs.
 
 It supports printing a summary about the provided network address, multiple
 command line options per information to be printed, transparent IPv6 support,
-and in addition it will use libmaxminddb if available to provide geographic information.
+and in addition it will use libmaxminddb if available to provide geographic
+information (continent, country, city, postal code, coordinates, time zone)
+and the autonomous system that routes the address, from the GeoLite2 databases.
 
 The project started as a fork of the ipcalc tool in the Fedora distribution
 but it has since then replaced the original tool.
@@ -115,8 +117,17 @@ HostMin:        193.92.150.1
 HostMax:        193.92.150.254
 Hosts/Net:      254
 
+Continent:      Europe
 Country code:   GR
 Country:        Greece
+City:           Athens
+Coordinates:    37.984200,23.735300
+Accuracy:       200 km
+Time zone:      Europe/Athens
+Routed by AS:   1241
+Operated by:    Forthnet
+AS network:     193.92.128.0/19
+Geo network:    193.92.144.0/21
 ```
 
 ```
@@ -128,8 +139,17 @@ BROADCAST=193.92.150.31
 ADDRSPACE=Internet
 MINADDR=193.92.150.1
 MAXADDR=193.92.150.30
+CONTINENT=Europe
 COUNTRYCODE=GR
 COUNTRY=Greece
+CITY=Athens
+COORDINATES="37.984200,23.735300"
+ACCURACYRADIUS=200
+TIMEZONE=Europe/Athens
+ASN=1241
+ASORG=Forthnet
+ASNETWORK=193.92.128.0/19
+GEONETWORK=193.92.144.0/21
 ```
 
 ```
@@ -161,8 +181,16 @@ HostMin:        2a03:2880:20:4f06::
 HostMax:        2a03:2880:20:4f06:ffff:ffff:ffff:ffff
 Hosts/Net:      2^(64) = 18446744073709551616
 
+Continent:      Europe
 Country code:   IE
 Country:        Ireland
+Coordinates:    53.000000,-8.000000
+Accuracy:       100 km
+Time zone:      Europe/Dublin
+Routed by AS:   32934
+Operated by:    Facebook, Inc.
+AS network:     2a03:2880::/32
+Geo network:    2a03:2880::/35
 ```
 
 ```
@@ -173,8 +201,16 @@ PREFIX=64
 ADDRSPACE="Global Unicast"
 MINADDR=2a03:2880:20:4f06::
 MAXADDR=2a03:2880:20:4f06:ffff:ffff:ffff:ffff
+CONTINENT=Europe
 COUNTRYCODE=IE
 COUNTRY=Ireland
+COORDINATES="53.000000,-8.000000"
+ACCURACYRADIUS=100
+TIMEZONE=Europe/Dublin
+ASN=32934
+ASORG="Facebook, Inc."
+ASNETWORK=2a03:2880::/32
+GEONETWORK=2a03:2880::/35
 ```
 
 ## Comparing networks
@@ -203,6 +239,46 @@ $ ipcalc -s 2001:db8:1::/48 --subnet-of=2001:db8::/32 && echo "inside"
 inside
 ```
 
+## Showing the bits of an address or network
+
+The `--binary` option maps an address, or the network part of a network, to its bits;
+host bits are shown as `x`. For IPv4 the bits of the network's addresses follow:
+
+```
+$ ipcalc --binary 192.168.92.6/22
+Network:    192.168.92.0/22
+
+                                  192.     168.   92-95.   0-255
+                             11000000.10101000.010111xx.xxxxxxxx
+                             └──── network /22 ─────┘└ host 10 ┘
+
+Address:    192.168.92.6     11000000.10101000.01011100.00000110
+Netmask:    255.255.252.0    11111111.11111111.11111100.00000000
+Network:    192.168.92.0     11000000.10101000.01011100.00000000
+HostMin:    192.168.92.1     11000000.10101000.01011100.00000001
+HostMax:    192.168.95.254   11000000.10101000.01011111.11111110
+Broadcast:  192.168.95.255   11000000.10101000.01011111.11111111
+```
+
+For IPv6 the brackets show the routing prefix, subnet ID and interface ID:
+
+```
+$ ipcalc --binary 2001:db8:abcd:12::1/56
+Network:    2001:db8:abcd::/56
+
+            2001:            0db8:            abcd:       0000-00ff
+0010000000000001:0000110110111000:1010101111001101:00000000xxxxxxxx
+└────────────────── routing prefix /56 ───────────────────┘└─ 8 ──┘
+bits 64-127: interface ID, all x
+```
+
+With `--format=value` only the bits of the network are printed:
+
+```
+$ ipcalc --format=value --binary 192.168.92.6/22
+11000000101010000101110000000000
+```
+
 ## JSON output
 
 ```
@@ -226,8 +302,15 @@ $ ipcalc --all-info --format=json 2a03:2880:20:4f06:21b:21ff:fe3a:5c7d/64
   "MINADDR":"2a03:2880:20:4f06::",
   "MAXADDR":"2a03:2880:20:4f06:ffff:ffff:ffff:ffff",
   "ADDRESSES":"18446744073709551616",
+  "CONTINENT":"Europe",
   "COUNTRYCODE":"IE",
   "COUNTRY":"Ireland",
-  "COORDINATES":"53.000000,-8.000000"
+  "COORDINATES":"53.000000,-8.000000",
+  "ACCURACYRADIUS":"100",
+  "TIMEZONE":"Europe/Dublin",
+  "ASN":"32934",
+  "ASORG":"Facebook, Inc.",
+  "ASNETWORK":"2a03:2880::/32",
+  "GEONETWORK":"2a03:2880::/35"
 }
 ```

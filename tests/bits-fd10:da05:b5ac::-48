@@ -1,0 +1,6 @@
+Network:    fd10:da05:b5ac::/48
+
+            fd10:            da05:            b5ac:       0000-ffff
+1111110100010000:1101101000000101:1011010110101100:xxxxxxxxxxxxxxxx
+└────────────── routing prefix /48 ──────────────┘ └ subnet ID 16 ┘
+bits 64-127: interface ID, all x

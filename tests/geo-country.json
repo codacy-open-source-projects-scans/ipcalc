@@ -1,0 +1,27 @@
+{
+	"database_type": "GeoLite2-Country",
+	"networks": {
+		"192.0.0.0/22": {
+			"continent": { "code": "EU", "names": { "en": "Europe" } },
+			"country": { "iso_code": "GR", "names": { "en": "Greece" } },
+			"registered_country": { "iso_code": "GR", "names": { "en": "Greece" } }
+		},
+		"198.51.100.0/25": {
+			"continent": { "code": "NA", "names": { "en": "North America" } },
+			"registered_country": { "iso_code": "US", "names": { "en": "United States" } }
+		},
+		"198.51.100.128/26": {
+			"continent": { "code": "NA", "names": { "en": "North America" } },
+			"represented_country": { "iso_code": "US", "names": { "en": "United States" }, "type": "military" },
+			"registered_country": { "iso_code": "DE", "names": { "en": "Germany" } }
+		},
+		"198.51.100.192/26": {
+			"continent": { "code": "NA", "names": { "en": "North America" } }
+		},
+		"2001:db8::/32": {
+			"continent": { "code": "EU", "names": { "en": "Europe" } },
+			"country": { "iso_code": "DE", "names": { "en": "Germany" } },
+			"registered_country": { "iso_code": "DE", "names": { "en": "Germany" } }
+		}
+	}
+}
